@@ -41,51 +41,49 @@ ShaderVertexLayout ShaderContext::ParseVertexShaderInputs(
     return result;
 }
 
-std::optional<ShaderContext> ShaderContext::CompileShader(ID3D11Device* device, InputLayoutCache& layoutCache,
-                                                           const std::wstring& fileName,
-                                                           const ShaderType shaderType) {
-    ShaderContext result{};
+std::optional<CompiledShader> ShaderContext::CompileCpu(const std::wstring& fileName,
+                                                         const ShaderType shaderType) {
+    CompiledShader result{};
     result.type = shaderType;
     const auto displayName = std::filesystem::path(fileName).string();
     ID3DBlob* errorCode = nullptr;
-    auto res = D3DCompileFromFile(fileName.c_str(),
-                                  nullptr,
-                                  nullptr,
-                                  GetEntryPoint(shaderType),
-                                  GetDX11Target(shaderType),
-                                  D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, // todo: should be toggleable
-                                  0,
-                                  result.blob.GetAddressOf(),
-                                  &errorCode);
+    const auto res = D3DCompileFromFile(fileName.c_str(),
+                                        nullptr,
+                                        nullptr,
+                                        GetEntryPoint(shaderType),
+                                        GetDX11Target(shaderType),
+                                        D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, // todo: should be toggleable
+                                        0,
+                                        result.blob.GetAddressOf(),
+                                        &errorCode);
     if (res < 0) {
         if (errorCode) {
             auto compileErrors = static_cast<char*>(errorCode->GetBufferPointer());
-            spdlog::error("Could not compile shader: {}", compileErrors);
+            spdlog::error("Could not compile shader {}: {}", displayName, compileErrors);
         } else {
             spdlog::error("Missing Shader File: {}", displayName);
         }
         return std::nullopt;
     }
 
-    ComPtr<ID3D11ShaderReflection> reflection;
-    res = D3DReflect(
+    const auto reflectRes = D3DReflect(
         result.blob->GetBufferPointer(),
         result.blob->GetBufferSize(),
         IID_ID3D11ShaderReflection,
-        reinterpret_cast<void**>(reflection.GetAddressOf()));
-    if (FAILED(res)) {
+        reinterpret_cast<void**>(result.reflection.GetAddressOf()));
+    if (FAILED(reflectRes)) {
         spdlog::error("Could not get shader reflection for shader: {}", displayName);
         return std::nullopt;
     }
 
-    D3D11_SHADER_DESC shaderDesc{};
-    if (const auto r = res = reflection->GetDesc(&shaderDesc); FAILED(r)) {
+    if (const auto r = result.reflection->GetDesc(&result.desc); FAILED(r)) {
         spdlog::error("Could not get shader description for shader: {}", displayName);
+        return std::nullopt;
     }
 
-    for (UINT i = 0; i < shaderDesc.BoundResources; ++i) {
+    for (UINT i = 0; i < result.desc.BoundResources; ++i) {
         D3D11_SHADER_INPUT_BIND_DESC bind{};
-        if (const auto r = reflection->GetResourceBindingDesc(i, &bind); FAILED(r)) {
+        if (const auto r = result.reflection->GetResourceBindingDesc(i, &bind); FAILED(r)) {
             spdlog::error("Could not get resource binding description for shader: {}", displayName);
             continue;
         }
@@ -97,19 +95,30 @@ std::optional<ShaderContext> ShaderContext::CompileShader(ID3D11Device* device, 
                                      static_cast<uint8_t>(bind.Type));
     }
 
-    if (shaderType == ShaderType::Vertex) {
-        auto layout = ParseVertexShaderInputs(reflection, shaderDesc, result.blob);
+    return result;
+}
+
+std::optional<ShaderContext> ShaderContext::FinalizeOnDevice(const CompiledShader& compiled,
+                                                              ID3D11Device* device,
+                                                              InputLayoutCache& layoutCache) {
+    ShaderContext result{};
+    result.type = compiled.type;
+    result.blob = compiled.blob;
+    result.bindings = compiled.bindings;
+
+    if (compiled.type == ShaderType::Vertex) {
+        auto layout = ParseVertexShaderInputs(compiled.reflection, compiled.desc, result.blob);
         result.layoutHandle = layoutCache.RegisterShaderLayout(std::move(layout));
     }
 
-    switch (shaderType) {
+    switch (compiled.type) {
     case ShaderType::Vertex: {
         ComPtr<ID3D11VertexShader> vs;
         if (const auto r = device->CreateVertexShader(
             result.blob->GetBufferPointer(),
             result.blob->GetBufferSize(),
             nullptr, &vs); FAILED(r)) {
-            spdlog::error("Could make vertex shader for: {}", displayName);
+            spdlog::error("Could not create vertex shader from bytecode: {:08x}", static_cast<unsigned>(r));
         }
         result.shader.vertexShader = std::move(vs);
         break;
@@ -120,7 +129,7 @@ std::optional<ShaderContext> ShaderContext::CompileShader(ID3D11Device* device, 
             result.blob->GetBufferPointer(),
             result.blob->GetBufferSize(),
             nullptr, &ps); FAILED(r)) {
-            spdlog::error("Could make pixel shader for: {}", displayName);
+            spdlog::error("Could not create pixel shader from bytecode: {:08x}", static_cast<unsigned>(r));
         }
         result.shader.pixelShader = std::move(ps);
         break;
@@ -131,13 +140,23 @@ std::optional<ShaderContext> ShaderContext::CompileShader(ID3D11Device* device, 
             result.blob->GetBufferPointer(),
             result.blob->GetBufferSize(),
             nullptr, &gs); FAILED(r)) {
-            spdlog::error("Could make geometry shader for: {}", displayName);
+            spdlog::error("Could not create geometry shader from bytecode: {:08x}", static_cast<unsigned>(r));
         }
         result.shader.geometryShader = std::move(gs);
         break;
     }
     }
     return result;
+}
+
+std::optional<ShaderContext> ShaderContext::CompileShader(ID3D11Device* device, InputLayoutCache& layoutCache,
+                                                           const std::wstring& fileName,
+                                                           const ShaderType shaderType) {
+    const auto compiled = CompileCpu(fileName, shaderType);
+    if (!compiled) {
+        return std::nullopt;
+    }
+    return FinalizeOnDevice(*compiled, device, layoutCache);
 }
 
 }

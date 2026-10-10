@@ -19,12 +19,25 @@ RenderingContext::~RenderingContext() {
 }
 
 void RenderingContext::Initialize(const uint32_t screenWidth, const uint32_t screenHeight) {
-    const auto hwnd = makeWindow(screenWidth, screenHeight);
+    if (!CreateDeviceAndSwapChain(makeWindow(screenWidth, screenHeight), screenWidth, screenHeight)) {
+        spdlog::critical("RenderingContext: no device, the process cannot continue");
+        std::exit(1);
+    }
+}
 
+bool RenderingContext::Initialize(const NativeSurface& surface) {
+    if (!surface.IsValid()) {
+        spdlog::error("RenderingContext::Initialize: the engine has no valid native surface");
+        return false;
+    }
+    return CreateDeviceAndSwapChain(static_cast<HWND>(surface.windowHandle), surface.width, surface.height);
+}
+
+bool RenderingContext::CreateDeviceAndSwapChain(const HWND hwnd, const uint32_t width, const uint32_t height) {
     const DXGI_SWAP_CHAIN_DESC swapChainDesc{
         .BufferDesc = DXGI_MODE_DESC{
-            .Width = screenWidth,
-            .Height = screenHeight,
+            .Width = width,
+            .Height = height,
             .RefreshRate = {.Numerator = 60, .Denominator = 1}, // todo FPS
             .Format = DXGI_FORMAT_B8G8R8A8_UNORM,
             .ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED,
@@ -40,7 +53,7 @@ void RenderingContext::Initialize(const uint32_t screenWidth, const uint32_t scr
     };
 
     constexpr D3D_FEATURE_LEVEL featureLevel[] = {D3D_FEATURE_LEVEL_11_1};
-    const auto r = D3D11CreateDeviceAndSwapChain(
+    const HRESULT r = D3D11CreateDeviceAndSwapChain(
         nullptr,
         D3D_DRIVER_TYPE_HARDWARE,
         nullptr,
@@ -53,9 +66,13 @@ void RenderingContext::Initialize(const uint32_t screenWidth, const uint32_t scr
         device_.GetAddressOf(),
         nullptr,
         deviceContext_.GetAddressOf());
-    checkResult(r, "D3D11CreateDeviceAndSwapChain");
+    if (FAILED(r)) {
+        spdlog::critical("D3D11CreateDeviceAndSwapChain failed: {:08x}", static_cast<unsigned long>(r));
+        return false;
+    }
     resourceManager_.Initialize(device_.Get());
     renderingStates_.Initialize(device_.Get());
+    return true;
 }
 
 RenderingResourceManager& RenderingContext::GetResourceManager() {

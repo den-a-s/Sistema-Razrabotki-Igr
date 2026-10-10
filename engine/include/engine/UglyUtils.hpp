@@ -2,6 +2,7 @@
 #include <SimpleMath.h>
 #include <cstdint>
 #include <filesystem>
+#include <string>
 #include <vector>
 
 #include <engine/engine_export.hpp>
@@ -38,6 +39,12 @@ ENGINE_API void LoadTexture(RenderingState& state, const std::filesystem::path& 
 ENGINE_API void LoadTexture(RenderingState& state, const wchar_t* path,
                             ComPtr<ID3D11ShaderResourceView>& texture);
 ENGINE_API ObjModel LoadObjModel(RenderingState& state, const wchar_t* folder, bool doCentering = false);
+
+/// Pure CPU path of LoadObjModel: reads and parses one .obj file, optionally recenters and
+/// normalizes the geometry. No GPU work, no texture loading, no termination on bad input;
+/// on failure returns false with the reason in error. model.textureSRV stays null.
+ENGINE_API bool ParseObjFile(const std::filesystem::path& objPath, bool center, ObjModel& model,
+                             std::string& error);
 
 struct VertData {
     Vector4 pos;

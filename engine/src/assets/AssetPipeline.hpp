@@ -1,0 +1,140 @@
+#pragma once
+
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
+
+#include <TaskScheduler.h>
+#include <spdlog/spdlog.h>
+
+#include <engine/RenderingResourceManager.hpp>
+#include <engine/ResourceID.hpp>
+#include <engine/ShaderContext.hpp>
+#include <engine/UglyUtils.hpp>
+#include <engine/assets/AssetCommon.hpp>
+#include <engine/assets/AssetTypes.hpp>
+
+namespace engine {
+
+/// Output of the CPU phase (worker thread): file bytes, parsed geometry, compiled
+/// bytecode. Contains no device objects and touches no shared registry state.
+struct MeshCpu {
+    std::vector<ugly_utils::VertData> vertices;
+    std::vector<uint32_t> indices;
+};
+
+struct BytesCpu {
+    std::vector<uint8_t> bytes;
+    bool isDds = false;
+};
+
+struct CpuPayload {
+    enum class Kind : uint8_t { None, Mesh, Bytes, Shader };
+
+    Kind kind = Kind::None;
+    MeshCpu mesh;
+    BytesCpu bytes;
+    CompiledShader shader;
+};
+
+/// Output of the GPU phase (main thread): handles of the resources that were created.
+/// Invalid members mean "this step produced nothing".
+struct GpuPayload {
+    MeshHandle mesh;
+    TextureHandle texture;
+    ShaderHandle vertex;
+    ShaderHandle pixel;
+    ShaderHandle geometry;
+};
+
+/// Everything the upload phase may need, resolved on the main thread before the call.
+struct UploadTransfer {
+    ID3D11Device* device = nullptr;
+    ID3D11DeviceContext* context = nullptr;
+    RenderingResourceManager* resources = nullptr;
+};
+
+/// Two-phase importer: ReadCpu is thread-safe and may run on a worker; UploadGpu must run
+/// on the main thread (device creation and HandleMap insertion). Neither terminates the
+/// process: failures return false with a message.
+class IAssetImporter {
+public:
+    virtual ~IAssetImporter() = default;
+
+    [[nodiscard]] virtual bool ReadCpu(const AssetDesc& desc, CpuPayload& payload,
+                                       std::string& error) const = 0;
+    [[nodiscard]] virtual bool UploadGpu(const UploadTransfer& transfer, const CpuPayload& payload,
+                                         GpuPayload& result, std::string& error) const = 0;
+};
+
+class ObjMeshImporter final : public IAssetImporter {
+public:
+    [[nodiscard]] bool ReadCpu(const AssetDesc& desc, CpuPayload& payload,
+                               std::string& error) const override;
+    [[nodiscard]] bool UploadGpu(const UploadTransfer& transfer, const CpuPayload& payload,
+                                 GpuPayload& result, std::string& error) const override;
+};
+
+class TextureImporter final : public IAssetImporter {
+public:
+    [[nodiscard]] bool ReadCpu(const AssetDesc& desc, CpuPayload& payload,
+                               std::string& error) const override;
+    [[nodiscard]] bool UploadGpu(const UploadTransfer& transfer, const CpuPayload& payload,
+                                 GpuPayload& result, std::string& error) const override;
+};
+
+class ShaderImporter final : public IAssetImporter {
+public:
+    [[nodiscard]] bool ReadCpu(const AssetDesc& desc, CpuPayload& payload,
+                               std::string& error) const override;
+    [[nodiscard]] bool UploadGpu(const UploadTransfer& transfer, const CpuPayload& payload,
+                                 GpuPayload& result, std::string& error) const override;
+};
+
+inline bool ReadWholeFileInto(const std::filesystem::path& path, std::vector<uint8_t>& out,
+                              std::string& error) {
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+        error = "Cannot open file: " + path.string();
+        return false;
+    }
+    const auto size = file.tellg();
+    if (size <= 0) {
+        error = "File is empty: " + path.string();
+        return false;
+    }
+    out.resize(static_cast<size_t>(size));
+    file.seekg(0);
+    if (!file.read(reinterpret_cast<char*>(out.data()), static_cast<std::streamsize>(size))) {
+        error = "Failed to read: " + path.string();
+        return false;
+    }
+    return true;
+}
+
+/// CPU phase of one asset load, queued on the engine task scheduler. ExecuteRange runs on a
+/// worker thread and touches only the job's own payload plus the immutable-while-Loading record
+/// description; every device call happens later on the main thread. The job object must be
+/// destroyed only once GetIsComplete() was observed (~ICompletable asserts completion).
+struct LoadJob final : public enki::ITaskSet {
+    AssetKind kind = AssetKind::Mesh;
+    ResourceID id = 0;
+    std::string name;
+    uint32_t slot = 0;
+    uint32_t generation = 0;
+    const AssetDesc* desc = nullptr;
+    const IAssetImporter* importer = nullptr;
+    CpuPayload payload;
+    std::string error;
+    bool cpuOk = false;
+
+    void ExecuteRange(enki::TaskSetPartition /*range*/, uint32_t threadnum) override {
+        // threadnum 0 is the thread that called TaskScheduler::Initialize(), i.e. the main one.
+        spdlog::debug("Asset load '{}' dispatched to thread {}", name, threadnum);
+        cpuOk = importer->ReadCpu(*desc, payload, error);
+    }
+};
+
+}  // namespace engine

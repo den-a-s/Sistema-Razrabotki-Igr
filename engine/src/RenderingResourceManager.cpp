@@ -75,6 +75,14 @@ ShaderHandle RenderingResourceManager::CompileShader(const std::wstring& fileNam
     return shaders_.Add(std::move(*shader));
 }
 
+ShaderHandle RenderingResourceManager::RegisterCompiledShader(const CompiledShader& compiled) {
+    auto shader = ShaderContext::FinalizeOnDevice(compiled, device_.Get(), inputLayoutCache_);
+    if (!shader) {
+        return ShaderHandle{};
+    }
+    return shaders_.Add(std::move(*shader));
+}
+
 BufferHandle RenderingResourceManager::CreateBuffer(const BufferDesc& desc, const void* initialData) {
     D3D11_BUFFER_DESC dxDesc{};
     dxDesc.ByteWidth = desc.size;

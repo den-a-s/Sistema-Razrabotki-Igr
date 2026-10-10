@@ -36,17 +36,26 @@ int ResolveObjIndex(const int rawIndex, const size_t count) {
     return -1;
 }
 
-ObjIndexTriplet ParseObjFaceVertexToken(const std::string& token) {
-    ObjIndexTriplet result{};
+bool ParseInt(const std::string& text, int& out) {
+    try {
+        out = std::stoi(text);
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
 
+bool ParseObjFaceVertexToken(const std::string& token, ObjIndexTriplet& out, std::string& error) {
     const size_t firstSlash = token.find('/');
     if (firstSlash == std::string::npos) {
-        ObjFailAndExit("Face token has no UV/normal data.");
+        error = "Face token has no UV/normal data.";
+        return false;
     }
 
     const size_t secondSlash = token.find('/', firstSlash + 1);
     if (secondSlash == std::string::npos) {
-        ObjFailAndExit("Face token must be in v/vt/vn format.");
+        error = "Face token must be in v/vt/vn format.";
+        return false;
     }
 
     const std::string p = token.substr(0, firstSlash);
@@ -54,35 +63,38 @@ ObjIndexTriplet ParseObjFaceVertexToken(const std::string& token) {
     const std::string n = token.substr(secondSlash + 1);
 
     if (p.empty() || t.empty() || n.empty()) {
-        ObjFailAndExit("Face token must contain position, UV and normal indices.");
+        error = "Face token must contain position, UV and normal indices.";
+        return false;
     }
 
-    result.positionIndex = std::stoi(p);
-    result.uvIndex = std::stoi(t);
-    result.normalIndex = std::stoi(n);
-
-    return result;
+    return ParseInt(p, out.positionIndex) && ParseInt(t, out.uvIndex) &&
+           ParseInt(n, out.normalIndex);
 }
 
-uint32_t GetOrCreateObjVertexIndex(
+bool GetOrCreateObjVertexIndex(
     const ObjIndexTriplet& triplet,
     const std::vector<Vector3>& positions,
     const std::vector<Vector2>& uvs,
     const std::vector<Vector3>& normals,
     std::unordered_map<std::string, uint32_t>& vertexMap,
-    std::vector<ObjVertex>& outVertices) {
+    std::vector<ObjVertex>& outVertices,
+    uint32_t& outIndex,
+    std::string& error) {
     const int pIdx = ResolveObjIndex(triplet.positionIndex, positions.size());
     const int tIdx = ResolveObjIndex(triplet.uvIndex, uvs.size());
     const int nIdx = ResolveObjIndex(triplet.normalIndex, normals.size());
 
     if (pIdx < 0 || pIdx >= static_cast<int>(positions.size())) {
-        ObjFailAndExit("Position index is out of range.");
+        error = "Position index is out of range.";
+        return false;
     }
     if (tIdx < 0 || tIdx >= static_cast<int>(uvs.size())) {
-        ObjFailAndExit("UV index is out of range (model must have UVs).");
+        error = "UV index is out of range (model must have UVs).";
+        return false;
     }
     if (nIdx < 0 || nIdx >= static_cast<int>(normals.size())) {
-        ObjFailAndExit("Normal index is out of range.");
+        error = "Normal index is out of range.";
+        return false;
     }
 
     const std::string key =
@@ -90,17 +102,18 @@ uint32_t GetOrCreateObjVertexIndex(
 
     const auto it = vertexMap.find(key);
     if (it != vertexMap.end()) {
-        return it->second;
+        outIndex = it->second;
+        return true;
     }
 
-    const uint32_t newIndex = static_cast<uint32_t>(outVertices.size());
+    outIndex = static_cast<uint32_t>(outVertices.size());
     outVertices.push_back(ObjVertex{
         .position = positions[pIdx],
         .normal = normals[nIdx],
         .uv = uvs[tIdx]
     });
-    vertexMap.emplace(key, newIndex);
-    return newIndex;
+    vertexMap.emplace(key, outIndex);
+    return true;
 }
 
 }
@@ -163,25 +176,19 @@ void LoadTexture(RenderingState& state, const wchar_t* path, ComPtr<ID3D11Shader
     LoadTexture(state, filePath, texture);
 }
 
-ObjModel LoadObjModel(RenderingState& state, const wchar_t* folder, const bool doCentering) {
-    if (folder == nullptr) {
-        ObjFailAndExit("Folder path is null.");
-    }
-
-    const std::filesystem::path folderPath(folder);
-    const std::filesystem::path objPath = folderPath / L"model.obj";
-    const std::filesystem::path texturePath = folderPath / L"texture.png";
-
+bool ParseObjFile(const std::filesystem::path& objPath, const bool center, ObjModel& model,
+                  std::string& error) {
     std::ifstream objFile(objPath);
     if (!objFile.is_open()) {
-        ObjFailAndExit("Failed to open model.obj.");
+        error = "Failed to open " + objPath.string();
+        return false;
     }
 
     std::vector<Vector3> positions;
     std::vector<Vector2> uvs;
     std::vector<Vector3> normals;
     std::unordered_map<std::string, uint32_t> vertexMap;
-    ObjModel model{};
+    model = ObjModel{};
 
     std::string line;
     while (std::getline(objFile, line)) {
@@ -202,7 +209,8 @@ ObjModel LoadObjModel(RenderingState& state, const wchar_t* folder, const bool d
             float z = 0.0f;
             lineStream >> x >> y >> z;
             if (!lineStream) {
-                ObjFailAndExit("Invalid vertex position line.");
+                error = "Invalid vertex position line: " + line;
+                return false;
             }
             positions.push_back(Vector3{x, y, z});
         } else if (prefix == "vt") {
@@ -210,7 +218,8 @@ ObjModel LoadObjModel(RenderingState& state, const wchar_t* folder, const bool d
             float v = 0.0f;
             lineStream >> u >> v;
             if (!lineStream) {
-                ObjFailAndExit("Invalid UV line.");
+                error = "Invalid UV line: " + line;
+                return false;
             }
             uvs.push_back(Vector2{u, 1.0f - v});
         } else if (prefix == "vn") {
@@ -219,27 +228,30 @@ ObjModel LoadObjModel(RenderingState& state, const wchar_t* folder, const bool d
             float z = 0.0f;
             lineStream >> x >> y >> z;
             if (!lineStream) {
-                ObjFailAndExit("Invalid normal line.");
+                error = "Invalid normal line: " + line;
+                return false;
             }
             normals.push_back(Vector3{x, y, z});
         } else if (prefix == "f") {
             std::vector<uint32_t> faceIndices;
             std::string token;
             while (lineStream >> token) {
-                const ObjIndexTriplet triplet = ParseObjFaceVertexToken(token);
-                const uint32_t index = GetOrCreateObjVertexIndex(
-                    triplet,
-                    positions,
-                    uvs,
-                    normals,
-                    vertexMap,
-                    model.vertices
-                );
+                ObjIndexTriplet triplet{};
+                if (!ParseObjFaceVertexToken(token, triplet, error)) {
+                    error += ": " + token;
+                    return false;
+                }
+                uint32_t index = 0;
+                if (!GetOrCreateObjVertexIndex(triplet, positions, uvs, normals, vertexMap,
+                                               model.vertices, index, error)) {
+                    return false;
+                }
                 faceIndices.push_back(index);
             }
 
             if (faceIndices.size() < 3) {
-                ObjFailAndExit("Face has fewer than 3 vertices.");
+                error = "Face has fewer than 3 vertices: " + line;
+                return false;
             }
 
             for (size_t i = 1; i + 1 < faceIndices.size(); ++i) {
@@ -253,16 +265,33 @@ ObjModel LoadObjModel(RenderingState& state, const wchar_t* folder, const bool d
     }
 
     if (model.vertices.empty() || model.indices.empty()) {
-        ObjFailAndExit("Parsed model is empty.");
+        error = "Parsed model is empty.";
+        return false;
     }
     if (uvs.empty()) {
-        ObjFailAndExit("Model has no UV data.");
+        error = "Model has no UV data.";
+        return false;
     }
 
-    LoadTexture(state, texturePath, model.textureSRV);
-    if (doCentering) {
-        CenterModel(model);
+    if (center) {
+        CenterModel(model, true);
     }
+    return true;
+}
+
+ObjModel LoadObjModel(RenderingState& state, const wchar_t* folder, const bool doCentering) {
+    if (folder == nullptr) {
+        ObjFailAndExit("Folder path is null.");
+    }
+
+    const std::filesystem::path folderPath(folder);
+
+    ObjModel model{};
+    std::string error;
+    if (!ParseObjFile(folderPath / L"model.obj", doCentering, model, error)) {
+        ObjFailAndExit(error.c_str());
+    }
+    LoadTexture(state, folderPath / L"texture.png", model.textureSRV);
     return model;
 }
 

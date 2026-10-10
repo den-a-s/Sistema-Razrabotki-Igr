@@ -23,6 +23,9 @@ struct ENGINE_API RenderingResourceManager {
     MeshHandle CreateMesh(BufferHandle vertexBuffer, BufferHandle indexBuffer, VertexLayout&& layout,
                           uint32_t vertexCount);
     ShaderHandle CompileShader(const std::wstring& fileName, ShaderType shaderType);
+    /// Uploads a CPU-compiled shader to the device and registers it; main thread only.
+    /// Empty handle when the device refused the bytecode.
+    ShaderHandle RegisterCompiledShader(const CompiledShader& compiled);
     [[nodiscard]] BufferHandle CreateBuffer(const BufferDesc& desc, const void* initialData);
 
     template <typename T>

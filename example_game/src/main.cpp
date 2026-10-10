@@ -1,15 +1,19 @@
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
-#include <stdexcept>
+#include <span>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include <windows.h>
 
-#include "engine/RenderingSystem.hpp"
+#include "engine/RenderingSubsystem.hpp"
 #include "engine/UglyUtils.hpp"
+#include "engine/assets/AssetSystem.hpp"
+#include "engine/core/FrameContext.hpp"
+#include "engine/engine.hpp"
+#include "engine/window.hpp"
 
 namespace {
 
@@ -28,21 +32,6 @@ struct SceneObject {
     engine::TextureHandle texture;
     engine::MaterialParameters material;
 };
-
-engine::MeshHandle MakeObjMesh(engine::RenderingResourceManager& resourceManager,
-                               const engine::ugly_utils::ObjModel& model) {
-    engine::ugly_utils::RawMesh rawMesh;
-    rawMesh.vertexes.reserve(model.vertices.size());
-    for (const auto& source : model.vertices) {
-        rawMesh.vertexes.push_back({
-            Vector4{source.position.x, source.position.y, source.position.z, 1.0f},
-            source.normal,
-            source.uv
-        });
-    }
-    rawMesh.indicies = model.indices;
-    return engine::ugly_utils::FromRawMesh(resourceManager, rawMesh);
-}
 
 engine::MeshHandle MakeGroundMesh(engine::RenderingResourceManager& resourceManager) {
     constexpr float extent = 15.0f;
@@ -98,28 +87,6 @@ engine::TextureHandle MakeSolidTexture(engine::RenderingResourceManager& resourc
         .usage = engine::TextureUsage::ShaderResource
     };
     return resourceManager.CreateTexture(description, std::span<const D3D11_SUBRESOURCE_DATA>{&data, 1});
-}
-
-SceneObject LoadObject(engine::RenderingSystem& renderer, const wchar_t* folder, const Matrix& transform,
-                       float shininess) {
-    engine::ugly_utils::RenderingState state{
-        renderer.GetRenderingContext().GetDevice(),
-        renderer.GetRenderingContext().GetDeviceContext()
-    };
-    auto model = engine::ugly_utils::LoadObjModel(state, folder, true);
-    const engine::MeshHandle mesh = MakeObjMesh(renderer.GetResourceManager(), model);
-    const engine::TextureHandle texture = renderer.GetResourceManager().RegisterTexture(
-        engine::Texture{std::move(model.textureSRV)});
-    return SceneObject{
-        .transform = transform,
-        .mesh = mesh,
-        .texture = texture,
-        .material = {
-            .specularColor = Vector3{0.25f, 0.25f, 0.25f},
-            .shininess = shininess,
-            .specialType = 0
-        }
-    };
 }
 
 bool IsKeyDown(int key) {
@@ -216,171 +183,269 @@ void UpdateLights(engine::RenderWorld& world, float time) {
 
 } // namespace
 
-int main(int argumentCount, char**) {
-    engine::RenderingSystem renderer;
-    renderer.Initialize(ScreenWidth, ScreenHeight);
+/// Host side of the example game: pumps Win32 messages, drives the FPS camera,
+/// the animated props and the lights, and feeds RenderWorld. The models themselves
+/// arrive through the AssetSystem in the background.
+class ExampleGameLogic final : public engine::Subsystem {
+public:
+    explicit ExampleGameLogic(HWND window) : window_(window) {}
 
-    renderer.GetWorld().camera = {
-        .fov = Pi / 3.0f,
-        .aspectRatio = static_cast<float>(ScreenWidth) / static_cast<float>(ScreenHeight),
-        .nearPlane = 0.1f,
-        .farPlane = 100.0f,
-        .yaw = 0.0f,
-        .pitch = -0.15f,
-        .position = Vector3{0.0f, 3.0f, 7.0f}
-    };
-    renderer.GetWorld().directionalLight = {
-        .position = Vector3::Zero,
-        .direction = Vector3{-0.45f, -1.0f, -0.3f},
-        .color = Vector3{1.0f, 0.95f, 0.85f},
-        .intensity = 1.25f,
-        .range = 0.0f,
-        .type = engine::LightInfo::Directional
-    };
-    constexpr float firstSpotOuterHalfAngle = Pi / 7.0f;
-    constexpr float secondSpotOuterHalfAngle = Pi / 6.0f;
-    const engine::MeshHandle firstSpotBoundingBox = engine::ugly_utils::FromRawMesh(
-        renderer.GetResourceManager(),
-        engine::ugly_utils::CreateSpotLightBoundingBox(10.0f, firstSpotOuterHalfAngle * 2.0f));
-    const engine::MeshHandle secondSpotBoundingBox = engine::ugly_utils::FromRawMesh(
-        renderer.GetResourceManager(),
-        engine::ugly_utils::CreateSpotLightBoundingBox(8.0f, secondSpotOuterHalfAngle * 2.0f));
-    renderer.GetWorld().lights = {
-        {
-            .position = Vector3{4.0f, 2.2f, 0.0f},
-            .direction = Vector3::Zero,
-            .color = Vector3{1.0f, 0.25f, 0.08f},
-            .intensity = 5.0f,
-            .range = 5.5f,
-            .type = engine::LightInfo::Point
-        },
-        {
-            .position = Vector3{-3.0f, 1.4f, 0.0f},
-            .direction = Vector3::Zero,
-            .color = Vector3{0.08f, 0.35f, 1.0f},
-            .intensity = 4.0f,
-            .range = 4.5f,
-            .type = engine::LightInfo::Point
-        },
-        {
-            .position = Vector3{0.0f, 6.0f, 0.0f},
-            .direction = Vector3{0.0f, -1.0f, 0.0f},
-            .color = Vector3{0.2f, 1.0f, 0.35f},
-            .intensity = 7.0f,
-            .range = 10.0f,
-            .type = engine::LightInfo::Spot,
-            .lightParameters = {.spotLight = {
-                .innerAngle = std::cos(Pi / 12.0f),
-                .outerAngle = std::cos(firstSpotOuterHalfAngle),
-                .range = 10.0f,
-                .boundingBox = firstSpotBoundingBox
-            }}
-        },
-        {
-            .position = Vector3{5.0f, 4.5f, 0.0f},
-            .direction = Vector3{-1.0f, -1.0f, 0.0f},
-            .color = Vector3{0.85f, 0.15f, 1.0f},
-            .intensity = 6.0f,
-            .range = 8.0f,
-            .type = engine::LightInfo::Spot,
-            .lightParameters = {.spotLight = {
-                .innerAngle = std::cos(Pi / 10.0f),
-                .outerAngle = std::cos(secondSpotOuterHalfAngle),
-                .range = 8.0f,
-                .boundingBox = secondSpotBoundingBox
-            }}
-        }
-    };
-
-    const engine::TextureHandle groundTexture = MakeCheckerTexture(renderer.GetResourceManager());
-    std::vector<SceneObject> objects;
-    objects.push_back({
-        .transform = Matrix::Identity,
-        .mesh = MakeGroundMesh(renderer.GetResourceManager()),
-        .texture = groundTexture,
-        .material = {Vector3{0.08f, 0.08f, 0.08f}, 24.0f, 0}
-    });
-    objects.push_back(LoadObject(renderer, L"models/Table", Matrix::CreateScale(3.5f) *
-        Matrix::CreateTranslation(-2.5f, 0.55f, 0.0f), 64.0f));
-    objects.push_back(LoadObject(renderer, L"models/Sign", Matrix::CreateScale(3.0f) *
-        Matrix::CreateRotationY(-0.35f) * Matrix::CreateTranslation(2.5f, 1.5f, -1.0f), 32.0f));
-    objects.push_back(LoadObject(renderer, L"models/Hammer", Matrix::CreateScale(2.0f) *
-        Matrix::CreateRotationZ(-0.65f) * Matrix::CreateTranslation(0.0f, 1.0f, 1.5f), 96.0f));
-
-    const auto orbitingSign = objects.size();
-    objects.push_back(objects[2]);
-    const auto bobbingHammer = objects.size();
-    objects.push_back(objects[3]);
-    const auto spinningHammer = objects.size();
-    objects.push_back(objects[3]);
-
-    const engine::MeshHandle lightMarkerMesh = engine::ugly_utils::FromRawMesh(
-        renderer.GetResourceManager(), engine::ugly_utils::CreateSphere(0.15f));
-    const std::vector<engine::TextureHandle> lightMarkerTextures{
-        MakeSolidTexture(renderer.GetResourceManager(), 0xff1440ffu),
-        MakeSolidTexture(renderer.GetResourceManager(), 0xffff5914u),
-        MakeSolidTexture(renderer.GetResourceManager(), 0xff59ff33u),
-        MakeSolidTexture(renderer.GetResourceManager(), 0xffff26d9u)
-    };
-    std::vector<size_t> lightMarkers;
-    lightMarkers.reserve(renderer.GetWorld().lights.size());
-    for (size_t i = 0; i < renderer.GetWorld().lights.size(); ++i) {
-        lightMarkers.push_back(objects.size());
-        objects.push_back({
-            .transform = Matrix::CreateTranslation(renderer.GetWorld().lights[i].position),
-            .mesh = lightMarkerMesh,
-            .texture = lightMarkerTextures[i],
-            .material = {Vector3{0.4f, 0.4f, 0.4f}, 96.0f, 0}
-        });
+    [[nodiscard]] std::string_view GetName() const override {
+        return "ExampleGameLogic";
     }
 
-    DXGI_SWAP_CHAIN_DESC swapChainDescription{};
-    renderer.GetRenderingContext().GetSwapChain()->GetDesc(&swapChainDescription);
-    const HWND window = swapChainDescription.OutputWindow;
-    CaptureMouse(window);
+    [[nodiscard]] bool Initialize() override {
+        rendering_ = GetEngine().GetSubsystem<engine::RenderingSubsystem>();
+        assets_ = GetEngine().GetSubsystem<engine::AssetSystem>();
+        if (rendering_ == nullptr || assets_ == nullptr) {
+            return false;
+        }
+        auto& resources = rendering_->GetResourceManager();
+        auto& world = rendering_->GetWorld();
 
-    const auto startTime = std::chrono::steady_clock::now();
-    auto previousTime = startTime;
-    bool running = true;
-    while (running && IsWindow(window)) {
+        world.camera = {
+            .fov = Pi / 3.0f,
+            .aspectRatio = static_cast<float>(ScreenWidth) / static_cast<float>(ScreenHeight),
+            .nearPlane = 0.1f,
+            .farPlane = 100.0f,
+            .yaw = 0.0f,
+            .pitch = -0.15f,
+            .position = Vector3{0.0f, 3.0f, 7.0f}
+        };
+        world.directionalLight = {
+            .position = Vector3::Zero,
+            .direction = Vector3{-0.45f, -1.0f, -0.3f},
+            .color = Vector3{1.0f, 0.95f, 0.85f},
+            .intensity = 1.25f,
+            .range = 0.0f,
+            .type = engine::LightInfo::Directional
+        };
+        constexpr float firstSpotOuterHalfAngle = Pi / 7.0f;
+        constexpr float secondSpotOuterHalfAngle = Pi / 6.0f;
+        const engine::MeshHandle firstSpotBoundingBox = engine::ugly_utils::FromRawMesh(
+            resources, engine::ugly_utils::CreateSpotLightBoundingBox(10.0f, firstSpotOuterHalfAngle * 2.0f));
+        const engine::MeshHandle secondSpotBoundingBox = engine::ugly_utils::FromRawMesh(
+            resources, engine::ugly_utils::CreateSpotLightBoundingBox(8.0f, secondSpotOuterHalfAngle * 2.0f));
+        world.lights = {
+            {
+                .position = Vector3{4.0f, 2.2f, 0.0f},
+                .direction = Vector3::Zero,
+                .color = Vector3{1.0f, 0.25f, 0.08f},
+                .intensity = 5.0f,
+                .range = 5.5f,
+                .type = engine::LightInfo::Point
+            },
+            {
+                .position = Vector3{-3.0f, 1.4f, 0.0f},
+                .direction = Vector3::Zero,
+                .color = Vector3{0.08f, 0.35f, 1.0f},
+                .intensity = 4.0f,
+                .range = 4.5f,
+                .type = engine::LightInfo::Point
+            },
+            {
+                .position = Vector3{0.0f, 6.0f, 0.0f},
+                .direction = Vector3{0.0f, -1.0f, 0.0f},
+                .color = Vector3{0.2f, 1.0f, 0.35f},
+                .intensity = 7.0f,
+                .range = 10.0f,
+                .type = engine::LightInfo::Spot,
+                .lightParameters = {.spotLight = {
+                    .innerAngle = std::cos(Pi / 12.0f),
+                    .outerAngle = std::cos(firstSpotOuterHalfAngle),
+                    .range = 10.0f,
+                    .boundingBox = firstSpotBoundingBox
+                }}
+            },
+            {
+                .position = Vector3{5.0f, 4.5f, 0.0f},
+                .direction = Vector3{-1.0f, -1.0f, 0.0f},
+                .color = Vector3{0.85f, 0.15f, 1.0f},
+                .intensity = 6.0f,
+                .range = 8.0f,
+                .type = engine::LightInfo::Spot,
+                .lightParameters = {.spotLight = {
+                    .innerAngle = std::cos(Pi / 10.0f),
+                    .outerAngle = std::cos(secondSpotOuterHalfAngle),
+                    .range = 8.0f,
+                    .boundingBox = secondSpotBoundingBox
+                }}
+            }
+        };
+
+        groundTexture_ = MakeCheckerTexture(resources);
+        lightMarkerMesh_ = engine::ugly_utils::FromRawMesh(
+            resources, engine::ugly_utils::CreateSphere(0.15f));
+        lightMarkerTextures_ = {
+            MakeSolidTexture(resources, 0xff1440ffu),
+            MakeSolidTexture(resources, 0xffff5914u),
+            MakeSolidTexture(resources, 0xff59ff33u),
+            MakeSolidTexture(resources, 0xffff26d9u)
+        };
+        objects_.push_back({
+            .transform = Matrix::Identity,
+            .mesh = MakeGroundMesh(resources),
+            .texture = groundTexture_,
+            .material = {Vector3{0.08f, 0.08f, 0.08f}, 24.0f, 0}
+        });
+
+        tableMesh_ = assets_->RequestMesh("models/Table", true);
+        signMesh_ = assets_->RequestMesh("models/Sign", true);
+        hammerMesh_ = assets_->RequestMesh("models/Hammer", true);
+        tableTexture_ = assets_->RequestTexture("models/Table");
+        signTexture_ = assets_->RequestTexture("models/Sign");
+        hammerTexture_ = assets_->RequestTexture("models/Hammer");
+
+        CaptureMouse(window_);
+        return true;
+    }
+
+    void Update(const engine::FrameContext& frame) override {
         MSG message{};
-        while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
             if (message.message == WM_QUIT) {
-                running = false;
+                GetEngine().RequestExit();
+                return;
             }
             TranslateMessage(&message);
-            DispatchMessage(&message);
+            DispatchMessageW(&message);
         }
-        if (!running) {
-            break;
+        if (!IsWindow(window_)) {
+            GetEngine().RequestExit();
+            return;
         }
 
-        const auto now = std::chrono::steady_clock::now();
-        const float deltaTime = (std::min)(std::chrono::duration<float>(now - previousTime).count(), 0.05f);
-        const float elapsedTime = std::chrono::duration<float>(now - startTime).count();
-        previousTime = now;
-        UpdateCamera(renderer.GetWorld().camera, window, deltaTime);
-        objects[orbitingSign].transform = Matrix::CreateScale(1.5f) *
-            Matrix::CreateRotationY(-elapsedTime * 1.2f) *
-            Matrix::CreateTranslation(std::cos(elapsedTime) * 5.0f, 1.25f,
-                                      std::sin(elapsedTime) * 5.0f);
-        objects[bobbingHammer].transform = Matrix::CreateScale(1.4f) *
-            Matrix::CreateRotationX(elapsedTime * 1.8f) *
-            Matrix::CreateRotationY(elapsedTime * 0.9f) *
-            Matrix::CreateTranslation(-4.5f, 1.5f + std::sin(elapsedTime * 2.0f), 3.0f);
-        objects[spinningHammer].transform = Matrix::CreateScale(1.2f) *
-            Matrix::CreateRotationZ(elapsedTime * 2.5f) *
-            Matrix::CreateTranslation(4.5f, 1.2f, 2.5f + std::sin(elapsedTime) * 1.5f);
-        UpdateLights(renderer.GetWorld(), elapsedTime);
-        for (size_t i = 0; i < lightMarkers.size(); ++i) {
-            objects[lightMarkers[i]].transform = Matrix::CreateTranslation(renderer.GetWorld().lights[i].position);
+        auto& world = rendering_->GetWorld();
+        UpdateCamera(world.camera, window_, static_cast<float>(frame.deltaSeconds));
+        if (!sceneBuilt_) {
+            TryBuildScene();
         }
-        FillRenderWorld(renderer.GetWorld(), objects);
-        renderer.RenderFrame();
+
+        const float time = static_cast<float>(frame.simulationTimeSeconds);
+        if (sceneBuilt_) {
+            objects_[orbitingSign_].transform = Matrix::CreateScale(1.5f) *
+                Matrix::CreateRotationY(-time * 1.2f) *
+                Matrix::CreateTranslation(std::cos(time) * 5.0f, 1.25f,
+                                         std::sin(time) * 5.0f);
+            objects_[bobbingHammer_].transform = Matrix::CreateScale(1.4f) *
+                Matrix::CreateRotationX(time * 1.8f) *
+                Matrix::CreateRotationY(time * 0.9f) *
+                Matrix::CreateTranslation(-4.5f, 1.5f + std::sin(time * 2.0f), 3.0f);
+            objects_[spinningHammer_].transform = Matrix::CreateScale(1.2f) *
+                Matrix::CreateRotationZ(time * 2.5f) *
+                Matrix::CreateTranslation(4.5f, 1.2f, 2.5f + std::sin(time) * 1.5f);
+        }
+
+        UpdateLights(world, time);
+        if (sceneBuilt_) {
+            for (size_t i = 0; i < lightMarkerTextures_.size(); ++i) {
+                objects_[firstLightMarker_ + i].transform =
+                    Matrix::CreateTranslation(world.lights[i].position);
+            }
+        }
+        FillRenderWorld(world, objects_);
     }
+
+private:
+    void TryBuildScene() {
+        const auto* tableMesh = assets_->Peek(tableMesh_);
+        const auto* signMesh = assets_->Peek(signMesh_);
+        const auto* hammerMesh = assets_->Peek(hammerMesh_);
+        const auto* tableTexture = assets_->Peek(tableTexture_);
+        const auto* signTexture = assets_->Peek(signTexture_);
+        const auto* hammerTexture = assets_->Peek(hammerTexture_);
+        if (tableMesh == nullptr || signMesh == nullptr || hammerMesh == nullptr ||
+            tableTexture == nullptr || signTexture == nullptr || hammerTexture == nullptr) {
+            return;
+        }
+
+        const engine::MaterialParameters objectMaterial{
+            Vector3{0.25f, 0.25f, 0.25f}, 0.0f, 0
+        };
+        SceneObject table{
+            .transform = Matrix::CreateScale(3.5f) * Matrix::CreateTranslation(-2.5f, 0.55f, 0.0f),
+            .mesh = tableMesh->mesh,
+            .texture = tableTexture->texture,
+            .material = objectMaterial
+        };
+        table.material.shininess = 64.0f;
+        SceneObject sign{
+            .transform = Matrix::CreateScale(3.0f) * Matrix::CreateRotationY(-0.35f) *
+                Matrix::CreateTranslation(2.5f, 1.5f, -1.0f),
+            .mesh = signMesh->mesh,
+            .texture = signTexture->texture,
+            .material = objectMaterial
+        };
+        sign.material.shininess = 32.0f;
+        SceneObject hammer{
+            .transform = Matrix::CreateScale(2.0f) * Matrix::CreateRotationZ(-0.65f) *
+                Matrix::CreateTranslation(0.0f, 1.0f, 1.5f),
+            .mesh = hammerMesh->mesh,
+            .texture = hammerTexture->texture,
+            .material = objectMaterial
+        };
+        hammer.material.shininess = 96.0f;
+        objects_.push_back(table);
+        objects_.push_back(sign);
+        objects_.push_back(hammer);
+
+        orbitingSign_ = objects_.size();
+        objects_.push_back(sign);
+        bobbingHammer_ = objects_.size();
+        objects_.push_back(hammer);
+        spinningHammer_ = objects_.size();
+        objects_.push_back(hammer);
+
+        firstLightMarker_ = objects_.size();
+        for (const engine::TextureHandle texture : lightMarkerTextures_) {
+            objects_.push_back({
+                .transform = Matrix::Identity,
+                .mesh = lightMarkerMesh_,
+                .texture = texture,
+                .material = {Vector3{0.4f, 0.4f, 0.4f}, 96.0f, 0}
+            });
+        }
+        sceneBuilt_ = true;
+    }
+
+    HWND window_ = nullptr;
+    engine::RenderingSubsystem* rendering_ = nullptr;
+    engine::AssetSystem* assets_ = nullptr;
+
+    engine::TextureHandle groundTexture_;
+    engine::MeshHandle lightMarkerMesh_;
+    std::vector<engine::TextureHandle> lightMarkerTextures_;
+
+    engine::AssetHandle<engine::MeshAsset> tableMesh_;
+    engine::AssetHandle<engine::MeshAsset> signMesh_;
+    engine::AssetHandle<engine::MeshAsset> hammerMesh_;
+    engine::AssetHandle<engine::TextureAsset> tableTexture_;
+    engine::AssetHandle<engine::TextureAsset> signTexture_;
+    engine::AssetHandle<engine::TextureAsset> hammerTexture_;
+
+    std::vector<SceneObject> objects_;
+    bool sceneBuilt_ = false;
+    size_t orbitingSign_ = 0;
+    size_t bobbingHammer_ = 0;
+    size_t spinningHammer_ = 0;
+    size_t firstLightMarker_ = 0;
+};
+
+int main(int /*argumentCount*/, char** /*arguments*/) {
+    HWND window = engine::makeWindow(ScreenWidth, ScreenHeight);
+
+    engine::EngineConfig config;
+    config.applicationName = "ExampleGame";
+    config.surface = engine::NativeSurface{window, ScreenWidth, ScreenHeight};
+
+    engine::Engine engine{config};
+    engine.AddSubsystem<engine::RenderingSubsystem>();
+    engine.AddSubsystem<engine::AssetSystem>();
+    engine.AddSubsystem<ExampleGameLogic>(window);
+    const bool ran = engine.Run();
 
     ReleaseCapture();
     while (ShowCursor(TRUE) < 0) {
     }
-    return 0;
+    return ran ? 0 : 1;
 }

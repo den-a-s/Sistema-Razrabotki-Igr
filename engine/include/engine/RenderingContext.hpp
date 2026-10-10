@@ -5,6 +5,9 @@
 #include <dxgi.h>
 #include <initializer_list>
 #include <optional>
+#include <windows.h>
+
+#include <engine/core/Surface.hpp>
 #include <engine/engine_export.hpp>
 #include <wrl/client.h>
 
@@ -28,7 +31,10 @@ struct ENGINE_API RenderingContext {
     RenderingContext();
     ~RenderingContext();
 
+    /// Legacy standalone path, creates its own window; prefer the NativeSurface overload.
     void Initialize(uint32_t screenWidth = 1000, uint32_t screenHeight = 600);
+    /// Device and swap chain onto a host-owned window; false when there is nothing to render into.
+    bool Initialize(const NativeSurface& surface);
 
     [[nodiscard]] RenderingResourceManager& GetResourceManager();
     [[nodiscard]] ID3D11Device* GetDevice() const;
@@ -69,6 +75,7 @@ struct ENGINE_API RenderingContext {
 
 private:
     static void checkResult(HRESULT result, const char* message);
+    bool CreateDeviceAndSwapChain(HWND outputWindow, uint32_t width, uint32_t height);
 
     ComPtr<IDXGISwapChain> swapChain_;
     ComPtr<ID3D11Device> device_;

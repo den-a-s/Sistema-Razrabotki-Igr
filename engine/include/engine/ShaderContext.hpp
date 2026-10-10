@@ -36,6 +36,16 @@ struct ENGINE_API DXShader {
     ComPtr<ID3D11GeometryShader> geometryShader;
 };
 
+/// Bytecode and reflection of one compiled stage. Device-independent: it can be produced
+/// on a worker thread; only FinalizeOnDevice touches the D3D device.
+struct ENGINE_API CompiledShader {
+    ComPtr<ID3DBlob> blob;
+    ComPtr<ID3D11ShaderReflection> reflection;
+    D3D11_SHADER_DESC desc{};
+    std::vector<ShaderBinding> bindings;
+    ShaderType type = ShaderType::Vertex;
+};
+
 struct ENGINE_API ShaderContext {
     ComPtr<ID3DBlob> blob;
     ShaderType type;
@@ -49,6 +59,12 @@ struct ENGINE_API ShaderContext {
 
     static std::optional<ShaderContext> CompileShader(ID3D11Device* device, InputLayoutCache& layoutCache,
                                                        const std::wstring& fileName, ShaderType shaderType);
+
+    /// D3DCompile + reflection only; runs on any thread.
+    static std::optional<CompiledShader> CompileCpu(const std::wstring& fileName, ShaderType shaderType);
+    /// Create*Shader and input-layout registration; main thread.
+    static std::optional<ShaderContext> FinalizeOnDevice(const CompiledShader& compiled, ID3D11Device* device,
+                                                          InputLayoutCache& layoutCache);
 
 private:
     static ShaderVertexLayout ParseVertexShaderInputs(const ComPtr<ID3D11ShaderReflection>& reflection,

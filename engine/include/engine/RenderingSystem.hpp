@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 
+#include <engine/core/Surface.hpp>
 #include <engine/engine_export.hpp>
 
 #include "GBufferPass.hpp"
@@ -15,9 +16,10 @@
 namespace engine {
 
 struct ENGINE_API RenderingSystem {
-    static RenderingSystem instance;
-
+    /// Legacy standalone path: the renderer creates the window itself.
     void Initialize(uint32_t screenWidth, uint32_t screenHeight);
+    /// Renders into a host-owned window; false when the device could not be created.
+    bool Initialize(const NativeSurface& surface);
     void RenderFrame();
 
     [[nodiscard]] RenderingContext& GetRenderingContext();
@@ -25,6 +27,8 @@ struct ENGINE_API RenderingSystem {
     [[nodiscard]] RenderWorld& GetWorld();
 
 private:
+    void InitializePasses(uint32_t screenWidth, uint32_t screenHeight);
+
     RenderingContext renderingContext_{};
     RenderWorld world_{};
     std::unique_ptr<RenderingResources> resources_;

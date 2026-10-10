@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -11,6 +12,8 @@ namespace engine {
 
 template <typename T>
 struct HandleMap {
+    // No removal by design: handles here are used as identity (e.g. InputLayoutCache keys),
+    // so an id stays valid for the whole process and can never be recycled behind a holder.
 
     struct Handle {
         uint32_t id = std::numeric_limits<uint32_t>::max();
@@ -37,6 +40,15 @@ struct HandleMap {
     T& Get(Handle h) {
         assert(h);
         return storage_[h.id];
+    }
+
+    const T& Get(Handle h) const {
+        assert(h);
+        return storage_[h.id];
+    }
+
+    [[nodiscard]] std::size_t Size() const noexcept {
+        return storage_.size();
     }
 
     std::optional<Handle> Find(const T& t) {

@@ -184,6 +184,15 @@ find_package(EnTT CONFIG REQUIRED)
 find_package(enkiTS CONFIG REQUIRED)
 
 set(ENGINE_CORE_HEADERS
+    include/engine/RenderingSubsystem.hpp
+    include/engine/assets/AssetCommon.hpp
+    include/engine/assets/AssetEvents.hpp
+    include/engine/assets/AssetHandle.hpp
+    include/engine/assets/AssetPathResolver.hpp
+    include/engine/assets/AssetSystem.hpp
+    include/engine/assets/AssetTable.hpp
+    include/engine/assets/AssetTypes.hpp
+    src/assets/AssetPipeline.hpp
     include/engine/core/CoreEvents.hpp
     include/engine/core/FrameContext.hpp
     include/engine/core/Subsystem.hpp
@@ -194,6 +203,11 @@ set(ENGINE_CORE_HEADERS
 )
 
 set(ENGINE_CORE_SOURCES
+    src/RenderingSubsystem.cpp
+    src/assets/AssetSystem.cpp
+    src/assets/ObjMeshImporter.cpp
+    src/assets/ShaderImporter.cpp
+    src/assets/TextureImporter.cpp
     src/core/Subsystem.cpp
     src/scene/Scene.cpp
 )
