@@ -22,8 +22,15 @@ using DirectX::SimpleMath::Vector4;
 // VertData is a flat triangle list with one UV set, so: triangulate, bake the node
 // transforms into the geometry, keep only mesh primitives, and make sure every vertex
 // has a normal (GenSmoothNormals only writes the vertices that came without one).
+//
+// FlipUVs and FlipWindingOrder are not cosmetic, they are what the old hand-written parser
+// did by hand: OBJ stores V measured from the bottom of the image while our samplers address
+// the first row as V=0, and the parser emitted every fan triangle as (i, 0, i+1), i.e. with
+// the opposite winding to the file. Assimp hands the file's own conventions over unless
+// asked, which rendered every texture upside-down and every surface back-to-front.
 constexpr unsigned int ImportFlags = aiProcess_Triangulate | aiProcess_PreTransformVertices |
-                                     aiProcess_GenSmoothNormals | aiProcess_SortByPType;
+                                     aiProcess_GenSmoothNormals | aiProcess_SortByPType |
+                                     aiProcess_FlipUVs | aiProcess_FlipWindingOrder;
 
 /// Recenters the geometry on its bounding-box center and scales it to a 0.5 half-extent,
 /// the same convention AssetDesc::centerOnLoad had with the old parser.
