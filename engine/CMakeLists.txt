@@ -9,56 +9,56 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(directxtk CONFIG REQUIRED)
 
 set(ENGINE_PUBLIC_HEADERS
-    include/engine/BindSlot.hpp
-    include/engine/Buffer.hpp
+    include/engine/core/HandleMap.hpp
+    include/engine/core/ResourceID.hpp
     include/engine/engine.hpp
-    include/engine/FPSCamera.hpp
-    include/engine/GBufferPass.hpp
-    include/engine/GraphicalState.hpp
-    include/engine/HandleMap.hpp
-    include/engine/LightPass.hpp
-    include/engine/PresentPass.hpp
-    include/engine/RenderedMesh.h
-    include/engine/RenderingContext.hpp
-    include/engine/RenderingResourceManager.hpp
-    include/engine/RenderingResources.h
-    include/engine/RenderingSystem.hpp
-    include/engine/RenderPass.hpp
-    include/engine/RenderWorld.hpp
-    include/engine/ResourceID.hpp
-    include/engine/ShaderContext.hpp
-    include/engine/ShadowPass.h
-    include/engine/Texture.hpp
-    include/engine/UglyUtils.hpp
-    include/engine/VertexLayout.hpp
-    include/engine/VertexLayoutCache.hpp
+    include/engine/rendering/FPSCamera.hpp
+    include/engine/rendering/GraphicalState.hpp
+    include/engine/rendering/passes/GBufferPass.hpp
+    include/engine/rendering/passes/LightPass.hpp
+    include/engine/rendering/passes/PresentPass.hpp
+    include/engine/rendering/passes/RenderPass.hpp
+    include/engine/rendering/passes/ShadowPass.hpp
+    include/engine/rendering/RenderWorld.hpp
+    include/engine/rendering/RenderingContext.hpp
+    include/engine/rendering/RenderingResourceManager.hpp
+    include/engine/rendering/RenderingResources.hpp
+    include/engine/rendering/RenderingSystem.hpp
+    include/engine/rendering/resources/BindSlot.hpp
+    include/engine/rendering/resources/Buffer.hpp
+    include/engine/rendering/resources/RenderedMesh.hpp
+    include/engine/rendering/resources/ShaderContext.hpp
+    include/engine/rendering/resources/Texture.hpp
+    include/engine/rendering/resources/VertexLayout.hpp
+    include/engine/rendering/resources/VertexLayoutCache.hpp
+    include/engine/rendering/UglyUtils.hpp
     include/engine/window.hpp
 )
 
 set(ENGINE_SOURCES
-    src/BindSlot.cpp
-    src/Buffer.cpp
+    src/core/HandleMap.cpp
+    src/core/ResourceID.cpp
     src/engine.cpp
-    src/FPSCamera.cpp
-    src/GBufferPass.cpp
-    src/GraphicalState.cpp
-    src/HandleMap.cpp
-    src/LightPass.cpp
-    src/PresentPass.cpp
-    src/RenderedMesh.cpp
-    src/RenderingContext.cpp
-    src/RenderingResourceManager.cpp
-    src/RenderingResources.cpp
-    src/RenderingSystem.cpp
-    src/RenderPass.cpp
-    src/RenderWorld.cpp
-    src/ResourceID.cpp
-    src/ShaderContext.cpp
-    src/ShadowPass.cpp
-    src/Texture.cpp
-    src/UglyUtils.cpp
-    src/VertexLayout.cpp
-    src/VertexLayoutCache.cpp
+    src/rendering/FPSCamera.cpp
+    src/rendering/GraphicalState.cpp
+    src/rendering/passes/GBufferPass.cpp
+    src/rendering/passes/LightPass.cpp
+    src/rendering/passes/PresentPass.cpp
+    src/rendering/passes/RenderPass.cpp
+    src/rendering/passes/ShadowPass.cpp
+    src/rendering/RenderingContext.cpp
+    src/rendering/RenderingResources.cpp
+    src/rendering/RenderingResourceManager.cpp
+    src/rendering/RenderingSystem.cpp
+    src/rendering/RenderWorld.cpp
+    src/rendering/resources/BindSlot.cpp
+    src/rendering/resources/Buffer.cpp
+    src/rendering/resources/RenderedMesh.cpp
+    src/rendering/resources/ShaderContext.cpp
+    src/rendering/resources/Texture.cpp
+    src/rendering/resources/VertexLayout.cpp
+    src/rendering/resources/VertexLayoutCache.cpp
+    src/rendering/UglyUtils.cpp
     src/window.cpp
 )
 
@@ -184,7 +184,7 @@ find_package(EnTT CONFIG REQUIRED)
 find_package(enkiTS CONFIG REQUIRED)
 
 set(ENGINE_CORE_HEADERS
-    include/engine/RenderingSubsystem.hpp
+    include/engine/rendering/RenderingSubsystem.hpp
     include/engine/assets/AssetCommon.hpp
     include/engine/assets/AssetEvents.hpp
     include/engine/assets/AssetHandle.hpp
@@ -203,7 +203,7 @@ set(ENGINE_CORE_HEADERS
 )
 
 set(ENGINE_CORE_SOURCES
-    src/RenderingSubsystem.cpp
+    src/rendering/RenderingSubsystem.cpp
     src/assets/AssetSystem.cpp
     src/assets/ObjMeshImporter.cpp
     src/assets/ShaderImporter.cpp

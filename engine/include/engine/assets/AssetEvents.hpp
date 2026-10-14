@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include <engine/ResourceID.hpp>
+#include <engine/core/ResourceID.hpp>
 #include <engine/assets/AssetCommon.hpp>
 
 // Events published by AssetSystem on Engine::GetEvents() once a load attempt has settled.

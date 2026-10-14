@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include <engine/ResourceID.hpp>
+#include <engine/core/ResourceID.hpp>
 #include <engine/assets/AssetCommon.hpp>
 #include <engine/assets/AssetHandle.hpp>
 

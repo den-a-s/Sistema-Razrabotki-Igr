@@ -1,8 +1,8 @@
 #pragma once
 
-#include <engine/RenderedMesh.h>
-#include <engine/ShaderContext.hpp>
-#include <engine/Texture.hpp>
+#include <engine/rendering/resources/RenderedMesh.hpp>
+#include <engine/rendering/resources/ShaderContext.hpp>
+#include <engine/rendering/resources/Texture.hpp>
 #include <engine/assets/AssetCommon.hpp>
 
 namespace engine {

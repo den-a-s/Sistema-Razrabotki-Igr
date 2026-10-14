@@ -9,10 +9,10 @@
 #include <TaskScheduler.h>
 #include <spdlog/spdlog.h>
 
-#include <engine/RenderingResourceManager.hpp>
-#include <engine/ResourceID.hpp>
-#include <engine/ShaderContext.hpp>
-#include <engine/UglyUtils.hpp>
+#include <engine/rendering/RenderingResourceManager.hpp>
+#include <engine/core/ResourceID.hpp>
+#include <engine/rendering/resources/ShaderContext.hpp>
+#include <engine/rendering/UglyUtils.hpp>
 #include <engine/assets/AssetCommon.hpp>
 #include <engine/assets/AssetTypes.hpp>
 

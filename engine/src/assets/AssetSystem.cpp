@@ -8,8 +8,8 @@
 
 #include "AssetPipeline.hpp"
 
-#include <engine/RenderingContext.hpp>
-#include <engine/RenderingSubsystem.hpp>
+#include <engine/rendering/RenderingContext.hpp>
+#include <engine/rendering/RenderingSubsystem.hpp>
 #include <engine/assets/AssetEvents.hpp>
 #include <engine/assets/AssetPathResolver.hpp>
 #include <engine/core/FrameContext.hpp>

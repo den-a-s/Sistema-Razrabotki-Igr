@@ -8,8 +8,8 @@
 
 #include <windows.h>
 
-#include "engine/RenderingSubsystem.hpp"
-#include "engine/UglyUtils.hpp"
+#include <engine/rendering/RenderingSubsystem.hpp>
+#include <engine/rendering/UglyUtils.hpp>
 #include "engine/assets/AssetSystem.hpp"
 #include "engine/core/FrameContext.hpp"
 #include "engine/engine.hpp"
