@@ -182,6 +182,7 @@ install(EXPORT EngineTargets
 
 find_package(EnTT CONFIG REQUIRED)
 find_package(enkiTS CONFIG REQUIRED)
+find_package(assimp CONFIG REQUIRED)
 
 set(ENGINE_CORE_HEADERS
     include/engine/rendering/RenderingSubsystem.hpp
@@ -205,7 +206,7 @@ set(ENGINE_CORE_HEADERS
 set(ENGINE_CORE_SOURCES
     src/rendering/RenderingSubsystem.cpp
     src/assets/AssetSystem.cpp
-    src/assets/ObjMeshImporter.cpp
+    src/assets/AssimpMeshImporter.cpp
     src/assets/ShaderImporter.cpp
     src/assets/TextureImporter.cpp
     src/core/Subsystem.cpp
@@ -218,6 +219,9 @@ foreach(engine_target IN ITEMS engine engine_static)
         # All of these appear in public headers (SimpleMath in Transform, EnTT in
         # Scene/Engine, enkiTS via Engine::GetTaskScheduler()), so consumers need them too.
         target_link_libraries(${engine_target} PUBLIC Microsoft::DirectXTK EnTT::EnTT enkiTS::enkiTS)
+        # Assimp is PRIVATE on purpose: AssimpMeshImporter.cpp is its only user and no
+        # public header mentions it. Static consumers still get it via the link-only interface.
+        target_link_libraries(${engine_target} PRIVATE assimp::assimp)
     endif()
 endforeach()
 

@@ -85,7 +85,7 @@ bool AssetSystem::Initialize() {
         return false;
     }
 
-    importers_[static_cast<size_t>(AssetKind::Mesh)] = std::make_unique<ObjMeshImporter>();
+    importers_[static_cast<size_t>(AssetKind::Mesh)] = std::make_unique<AssimpMeshImporter>();
     importers_[static_cast<size_t>(AssetKind::Texture)] = std::make_unique<TextureImporter>();
     importers_[static_cast<size_t>(AssetKind::Shader)] = std::make_unique<ShaderImporter>();
     return true;

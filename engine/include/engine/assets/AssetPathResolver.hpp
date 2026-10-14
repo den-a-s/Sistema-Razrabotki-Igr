@@ -1,6 +1,9 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <filesystem>
+#include <string>
 #include <string_view>
 
 #include <engine/assets/AssetCommon.hpp>
@@ -21,14 +24,21 @@ namespace engine {
 /// assets are found.
 class AssetPathResolver {
 public:
-    /// Mesh assets address a folder that holds model.obj (and optionally texture.png);
-    /// a name already ending in .obj addresses that file directly.
+    /// Mesh assets address a folder that holds model.<ext> (and optionally texture.png);
+    /// a name ending in a model extension addresses that file directly. Assimp chooses the
+    /// reader from the extension, so the file format itself is not fixed to .obj.
     [[nodiscard]] static std::filesystem::path ResolveMesh(const AssetDesc& desc) {
         std::filesystem::path path = MakeAbsolute(desc.path);
-        if (HasExtension(path, L".obj")) {
+        if (IsModelFile(path)) {
             return path;
         }
-        return path / L"model.obj";
+        for (const wchar_t* extension : ModelExtensions) {
+            std::filesystem::path candidate = path / (std::wstring(L"model") + extension);
+            if (std::filesystem::exists(candidate)) {
+                return candidate;
+            }
+        }
+        return path / L"model.obj";  // nothing found: name the conventional file in the error
     }
 
     /// A name ending in a known image extension addresses that file; anything else is a
@@ -103,6 +113,16 @@ private:
                HasExtension(path, L".jpeg") || HasExtension(path, L".tif") ||
                HasExtension(path, L".tiff") || HasExtension(path, L".dds") ||
                HasExtension(path, L".bmp");
+    }
+
+    /// Model formats worth putting in a folder: tried in this order when a mesh name is a
+    /// directory. Assimp reads far more, these are the ones a DCC tool exports.
+    static constexpr std::array<const wchar_t*, 7> ModelExtensions{
+        L".fbx", L".gltf", L".glb", L".obj", L".dae", L".blend", L".ply"};
+
+    [[nodiscard]] static bool IsModelFile(const std::filesystem::path& path) {
+        return std::any_of(ModelExtensions.begin(), ModelExtensions.end(),
+                           [&path](const wchar_t* extension) { return HasExtension(path, extension); });
     }
 };
 

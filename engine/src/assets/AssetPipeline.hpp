@@ -69,7 +69,7 @@ public:
                                          GpuPayload& result, std::string& error) const = 0;
 };
 
-class ObjMeshImporter final : public IAssetImporter {
+class AssimpMeshImporter final : public IAssetImporter {
 public:
     [[nodiscard]] bool ReadCpu(const AssetDesc& desc, CpuPayload& payload,
                                std::string& error) const override;

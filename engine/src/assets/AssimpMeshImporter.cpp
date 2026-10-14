@@ -1,0 +1,131 @@
+#include "AssetPipeline.hpp"
+
+#include <algorithm>
+#include <format>
+#include <span>
+#include <string>
+#include <utility>
+
+#include <assimp/Importer.hpp>
+#include <assimp/postprocess.h>
+#include <assimp/scene.h>
+
+#include <engine/assets/AssetPathResolver.hpp>
+
+namespace engine {
+namespace {
+
+using DirectX::SimpleMath::Vector2;
+using DirectX::SimpleMath::Vector3;
+using DirectX::SimpleMath::Vector4;
+
+// VertData is a flat triangle list with one UV set, so: triangulate, bake the node
+// transforms into the geometry, keep only mesh primitives, and make sure every vertex
+// has a normal (GenSmoothNormals only writes the vertices that came without one).
+constexpr unsigned int ImportFlags = aiProcess_Triangulate | aiProcess_PreTransformVertices |
+                                     aiProcess_GenSmoothNormals | aiProcess_SortByPType;
+
+/// Recenters the geometry on its bounding-box center and scales it to a 0.5 half-extent,
+/// the same convention AssetDesc::centerOnLoad had with the old parser.
+void CenterAndNormalize(MeshCpu& mesh) {
+    constexpr float kMax = 1e30f;
+    Vector3 min{kMax, kMax, kMax};
+    Vector3 max{-kMax, -kMax, -kMax};
+    for (const ugly_utils::VertData& vertex : mesh.vertices) {
+        const Vector3 position{vertex.pos.x, vertex.pos.y, vertex.pos.z};
+        min = Vector3::Min(min, position);
+        max = Vector3::Max(max, position);
+    }
+
+    const Vector3 center = (min + max) * 0.5f;
+    const Vector3 halfExtent = (max - min) * 0.5f;
+    const float largest = (std::max)({halfExtent.x, halfExtent.y, halfExtent.z});
+    const float scale = largest > 1e-6f ? 0.5f / largest : 1.0f;
+    for (ugly_utils::VertData& vertex : mesh.vertices) {
+        vertex.pos = Vector4{(vertex.pos.x - center.x) * scale, (vertex.pos.y - center.y) * scale,
+                             (vertex.pos.z - center.z) * scale, 1.0f};
+    }
+}
+
+}  // namespace
+
+bool AssimpMeshImporter::ReadCpu(const AssetDesc& desc, CpuPayload& payload, std::string& error) const {
+    const std::filesystem::path path = AssetPathResolver::ResolveMesh(desc);
+
+    // A per-call Importer: Assimp is only safe for concurrent loads when instances are not
+    // shared, and several assets can be reading on different workers at the same time.
+    Assimp::Importer importer;
+    const aiScene* scene = importer.ReadFile(path.string(), ImportFlags);
+    if (scene == nullptr || scene->mRootNode == nullptr) {
+        error = std::format("Assimp failed to read '{}': {}", path.string(), importer.GetErrorString());
+        return false;
+    }
+
+    MeshCpu mesh;
+    bool hasUVs = false;
+    for (const aiMesh* source : std::span(scene->mMeshes, scene->mNumMeshes)) {
+        if (source == nullptr || !source->HasPositions() || !source->HasFaces()) {
+            continue;
+        }
+        const uint32_t baseVertex = static_cast<uint32_t>(mesh.vertices.size());
+        hasUVs = hasUVs || source->HasTextureCoords(0);
+        for (uint32_t index = 0; index < source->mNumVertices; ++index) {
+            const aiVector3D& position = source->mVertices[index];
+            const aiVector3D normal = source->HasNormals() ? source->mNormals[index] : aiVector3D{0.0f, 1.0f, 0.0f};
+            const aiVector3D uv = source->HasTextureCoords(0) ? source->mTextureCoords[0][index]
+                                                              : aiVector3D{0.0f, 0.0f, 0.0f};
+            mesh.vertices.push_back(ugly_utils::VertData{
+                .pos = Vector4{position.x, position.y, position.z, 1.0f},
+                .norm = Vector3{normal.x, normal.y, normal.z},
+                .uv = Vector2{uv.x, uv.y}
+            });
+        }
+        for (uint32_t face = 0; face < source->mNumFaces; ++face) {
+            const aiFace& source_face = source->mFaces[face];
+            for (uint32_t index = 0; index < source_face.mNumIndices; ++index) {
+                mesh.indices.push_back(baseVertex + source_face.mIndices[index]);
+            }
+        }
+    }
+
+    if (mesh.vertices.empty() || mesh.indices.empty()) {
+        error = std::format("Assimp read '{}' but it contains no triangles", path.string());
+        return false;
+    }
+    if (!hasUVs) {
+        error = std::format("'{}' has no UV channel, the renderer needs one", path.string());
+        return false;
+    }
+    if (desc.centerOnLoad) {
+        CenterAndNormalize(mesh);
+    }
+
+    payload = CpuPayload{};
+    payload.kind = CpuPayload::Kind::Mesh;
+    payload.mesh = std::move(mesh);
+    return true;
+}
+
+bool AssimpMeshImporter::UploadGpu(const UploadTransfer& transfer, const CpuPayload& payload,
+                                   GpuPayload& result, std::string& error) const {
+    if (payload.kind != CpuPayload::Kind::Mesh) {
+        error = "AssimpMeshImporter: payload is not a parsed mesh";
+        return false;
+    }
+
+    const auto vertexBuffer = transfer.resources->CreateVertexBuffer<ugly_utils::VertData>(
+        payload.mesh.vertices);
+    const auto indexBuffer = transfer.resources->CreateIndexBuffer<uint32_t>(payload.mesh.indices);
+
+    VertexLayout layout;
+    layout.Add("POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0);
+    layout.Add("NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 16);
+    layout.Add("TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 16 + 12);
+
+    result.mesh = transfer.resources->CreateMesh(
+        vertexBuffer, indexBuffer, std::move(layout),
+        static_cast<uint32_t>(payload.mesh.indices.size()));
+    return true;
+}
+
+}  // namespace engine
