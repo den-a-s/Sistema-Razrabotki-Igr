@@ -10,10 +10,10 @@
 
 #include <engine/rendering/RenderingSubsystem.hpp>
 #include <engine/rendering/UglyUtils.hpp>
-#include "engine/assets/AssetSystem.hpp"
-#include "engine/core/FrameContext.hpp"
-#include "engine/engine.hpp"
-#include "engine/window.hpp"
+#include <engine/assets/AssetSystem.hpp>
+#include <engine/core/FrameContext.hpp>
+#include <engine/engine.hpp>
+#include <engine/window.hpp>
 
 namespace {
 
@@ -196,10 +196,10 @@ public:
 
     [[nodiscard]] bool Initialize() override {
         rendering_ = GetEngine().GetSubsystem<engine::RenderingSubsystem>();
-        assets_ = GetEngine().GetSubsystem<engine::AssetSystem>();
-        if (rendering_ == nullptr || assets_ == nullptr) {
+        if (rendering_ == nullptr) {
             return false;
         }
+        assets_ = &GetEngine().GetAssets();
         auto& resources = rendering_->GetResourceManager();
         auto& world = rendering_->GetWorld();
 
@@ -440,7 +440,6 @@ int main(int /*argumentCount*/, char** /*arguments*/) {
 
     engine::Engine engine{config};
     engine.AddSubsystem<engine::RenderingSubsystem>();
-    engine.AddSubsystem<engine::AssetSystem>();
     engine.AddSubsystem<ExampleGameLogic>(window);
     const bool ran = engine.Run();
 

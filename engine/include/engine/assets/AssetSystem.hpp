@@ -10,12 +10,12 @@
 #include <engine/assets/AssetHandle.hpp>
 #include <engine/assets/AssetTable.hpp>
 #include <engine/assets/AssetTypes.hpp>
-#include <engine/core/Subsystem.hpp>
 #include <engine/engine_export.hpp>
 
 namespace engine {
 
 struct FrameContext;
+class Engine;
 class RenderingSubsystem;
 class IAssetImporter;
 struct UploadTransfer;
@@ -28,20 +28,25 @@ struct LoadJob;
 /// addressed by normalized names ("models/table" == "Models\\Table"), each table
 /// entry goes Unloaded -> Loading -> Ready | Failed.
 ///
-/// Registration order matters: RenderingSubsystem must be added first, this finds
-/// it in Initialize().
-class ENGINE_API AssetSystem : public Subsystem {
+/// Part of the kernel rather than a subsystem: it has no meaningful place in the
+/// game loop's Update/Render order, and every subsystem needs it, so it is reached
+/// through Engine::GetAssets(). Engine drives Initialize/Update/Shutdown.
+class ENGINE_API AssetSystem {
 public:
-    /// Both defined in the .cpp: constructing and destroying the importer pointers needs
-    /// their complete types, which live in an engine-private header.
-    AssetSystem();
-    ~AssetSystem() override;
+    /// Constructed by the Engine: loading needs the scheduler, the event dispatcher
+    /// and the rendering subsystem, all of which live behind that reference.
+    explicit AssetSystem(Engine& engine);
+    /// Both the constructor and the destructor need the complete importer types,
+    /// which live in an engine-private header.
+    ~AssetSystem();
 
-    [[nodiscard]] std::string_view GetName() const override;
-
-    [[nodiscard]] bool Initialize() override;
-    void Update(const FrameContext& frame) override;
-    void Shutdown() override;
+    /// Builds the importers. Nothing here can fail, unlike a subsystem's: the scheduler
+    /// and the device are only touched once a load is actually requested.
+    void Initialize();
+    /// Collects finished background loads and publishes them. Engine calls this once
+    /// per Tick, before the subsystems run.
+    void Update(const FrameContext& frame);
+    void Shutdown();
 
     /// Blocking loads, for boot-time assets: the CPU phase may already run on a worker
     /// (started by the Request* inside), the call waits for it and uploads on this thread.
@@ -90,8 +95,6 @@ public:
         return record != nullptr && record->state == AssetState::Ready;
     }
 
-    [[nodiscard]] RenderingSubsystem& GetRendering() const noexcept;
-
 private:
     template <typename T>
     AssetHandle<T> Request(AssetDesc&& desc);
@@ -112,7 +115,9 @@ private:
     template <typename T>
     T* FinishTyped(const LoadJob& job, AssetTable<T>& table, AssetHandle<T> handle, uint64_t frameIndex);
 
-    [[nodiscard]] UploadTransfer MakeTransfer() const;
+    /// Resolved per upload, not cached: as a kernel piece this exists before any subsystem
+    /// has been registered, so there is nothing to point at in Initialize().
+    [[nodiscard]] UploadTransfer MakeTransfer(RenderingSubsystem& rendering) const;
     [[nodiscard]] const IAssetImporter& ImporterFor(AssetKind kind) const;
 
     template <typename T>
@@ -140,7 +145,7 @@ private:
     /// Queued CPU-phase jobs. Touched only from the main thread, so no lock is needed:
     /// workers see just each job's own fields.
     std::vector<std::unique_ptr<LoadJob>> inFlight_;
-    RenderingSubsystem* rendering_ = nullptr;
+    Engine& engine_;
 };
 
 }  // namespace engine

@@ -40,6 +40,11 @@ private:
 
 bool TextureImporter::ReadCpu(const AssetDesc& desc, ID3D11Device* device, CpuPayload& payload,
                               std::string& error) const {
+    if (device == nullptr) {
+        error = "no device yet: a texture cannot be decoded before the rendering subsystem is up";
+        return false;
+    }
+
     const auto path = AssetPathResolver::ResolveTexture(desc);
 
     std::vector<uint8_t> fileBytes;

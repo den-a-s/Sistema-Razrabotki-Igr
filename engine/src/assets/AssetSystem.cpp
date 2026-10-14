@@ -85,25 +85,14 @@ constexpr std::string_view ToString(const AssetKind kind) {
 
 }  // namespace
 
-AssetSystem::AssetSystem() = default;
+AssetSystem::AssetSystem(Engine& engine) : engine_(engine) {}
 
 AssetSystem::~AssetSystem() = default;
 
-std::string_view AssetSystem::GetName() const {
-    return "AssetSystem";
-}
-
-bool AssetSystem::Initialize() {
-    rendering_ = GetEngine().GetSubsystem<RenderingSubsystem>();
-    if (rendering_ == nullptr) {
-        spdlog::error("AssetSystem: RenderingSubsystem must be registered before AssetSystem");
-        return false;
-    }
-
+void AssetSystem::Initialize() {
     importers_[static_cast<size_t>(AssetKind::Mesh)] = std::make_unique<AssimpMeshImporter>();
     importers_[static_cast<size_t>(AssetKind::Texture)] = std::make_unique<TextureImporter>();
     importers_[static_cast<size_t>(AssetKind::Shader)] = std::make_unique<ShaderImporter>();
-    return true;
 }
 
 void AssetSystem::Update(const FrameContext& frame) {
@@ -121,11 +110,11 @@ void AssetSystem::Update(const FrameContext& frame) {
 }
 
 void AssetSystem::Shutdown() {
-    // Engine::Shutdown() stops subsystems before TaskScheduler::WaitforAllAndShutdown(), so
-    // the scheduler is still usable here. Waiting for each job is what ~ICompletable
-    // requires; their results are dropped, nobody consumes assets during kernel shutdown.
+    // Engine::Shutdown() calls this before TaskScheduler::WaitforAllAndShutdown(), so the
+    // scheduler is still usable. Waiting for each job is what ~ICompletable requires; their
+    // results are dropped, nobody consumes assets during kernel shutdown.
     for (std::unique_ptr<LoadJob>& job : inFlight_) {
-        GetEngine().GetTaskScheduler().WaitforTask(job.get());
+        engine_.GetTaskScheduler().WaitforTask(job.get());
     }
     inFlight_.clear();
 }
@@ -216,8 +205,8 @@ T* AssetSystem::LoadSync(const AssetHandle<T> handle) {
     if (job == nullptr) {
         return FailLoad(table, handle, "load job disappeared from the scheduler");
     }
-    GetEngine().GetTaskScheduler().WaitforTask(job.get());
-    return FinishTyped(*job, table, handle, GetEngine().GetFrame().frameIndex);
+    engine_.GetTaskScheduler().WaitforTask(job.get());
+    return FinishTyped(*job, table, handle, engine_.GetFrame().frameIndex);
 }
 
 void AssetSystem::DispatchJob(const AssetKind kind, const AssetDesc& desc, const uint32_t slot,
@@ -230,14 +219,17 @@ void AssetSystem::DispatchJob(const AssetKind kind, const AssetDesc& desc, const
     job->generation = generation;
     job->desc = &desc;
     job->importer = importers_[static_cast<size_t>(kind)].get();
-    // Resolved here, on the main thread: the worker only uses the free-threaded device.
-    job->device = MakeTransfer().device;
+    // Resolved here, on the main thread: the worker only ever uses the free-threaded device.
+    // Missing rendering is not fatal - a texture importer reports it, the rest never need it.
+    if (RenderingSubsystem* rendering = engine_.GetSubsystem<RenderingSubsystem>()) {
+        job->device = rendering->GetContext().GetDevice();
+    }
     job->queuedAt = std::chrono::steady_clock::now();
     spdlog::info("AssetSystem: queued '{}' ({}) on frame {}", desc.name, ToString(kind),
-                 GetEngine().GetFrame().frameIndex);
+                 engine_.GetFrame().frameIndex);
     LoadJob* scheduled = job.get();
     inFlight_.push_back(std::move(job));
-    GetEngine().GetTaskScheduler().AddTaskSetToPipe(scheduled);
+    engine_.GetTaskScheduler().AddTaskSetToPipe(scheduled);
 }
 
 std::unique_ptr<LoadJob> AssetSystem::TakeJob(const AssetKind kind, const uint32_t slot) {
@@ -276,15 +268,20 @@ T* AssetSystem::FinishTyped(const LoadJob& job, AssetTable<T>& table, const Asse
     }
     if (!job.cpuOk) {
         T* failed = FailLoad(table, handle, job.error);
-        GetEngine().GetEvents().trigger(AssetFailedEvent{job.id, job.name, job.kind, job.error});
+        engine_.GetEvents().trigger(AssetFailedEvent{job.id, job.name, job.kind, job.error});
         return failed;
+    }
+
+    RenderingSubsystem* rendering = engine_.GetSubsystem<RenderingSubsystem>();
+    if (rendering == nullptr) {
+        return FailLoad(table, handle, "no RenderingSubsystem to upload the result to");
     }
 
     GpuPayload gpu;
     std::string error;
-    if (!ImporterFor(job.kind).UploadGpu(MakeTransfer(), job.payload, gpu, error)) {
+    if (!ImporterFor(job.kind).UploadGpu(MakeTransfer(*rendering), job.payload, gpu, error)) {
         T* failed = FailLoad(table, handle, error);
-        GetEngine().GetEvents().trigger(AssetFailedEvent{job.id, job.name, job.kind, error});
+        engine_.GetEvents().trigger(AssetFailedEvent{job.id, job.name, job.kind, error});
         return failed;
     }
 
@@ -294,12 +291,12 @@ T* AssetSystem::FinishTyped(const LoadJob& job, AssetTable<T>& table, const Asse
                  job.name, ToString(job.kind), frameIndex, totalSeconds);
 
     T* value = table.Publish(handle, MakeValue<T>(record->value, gpu));
-    GetEngine().GetEvents().trigger(AssetLoadedEvent{job.id, job.name, job.kind});
+    engine_.GetEvents().trigger(AssetLoadedEvent{job.id, job.name, job.kind});
     return value;
 }
 
-UploadTransfer AssetSystem::MakeTransfer() const {
-    RenderingContext& context = rendering_->GetContext();
+UploadTransfer AssetSystem::MakeTransfer(RenderingSubsystem& rendering) const {
+    RenderingContext& context = rendering.GetContext();
     UploadTransfer transfer;
     transfer.device = context.GetDevice();
     transfer.context = context.GetDeviceContext();
@@ -310,11 +307,6 @@ UploadTransfer AssetSystem::MakeTransfer() const {
 const IAssetImporter& AssetSystem::ImporterFor(const AssetKind kind) const {
     assert(importers_[static_cast<size_t>(kind)] != nullptr && "AssetSystem::Initialize() did not run");
     return *importers_[static_cast<size_t>(kind)];
-}
-
-RenderingSubsystem& AssetSystem::GetRendering() const noexcept {
-    assert(rendering_ != nullptr && "AssetSystem::Initialize() did not run");
-    return *rendering_;
 }
 
 }  // namespace engine

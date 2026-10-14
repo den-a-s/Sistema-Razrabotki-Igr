@@ -24,6 +24,8 @@ class TaskScheduler;  // include <TaskScheduler.h> to use it
 
 namespace engine {
 
+class AssetSystem;
+
 [[nodiscard]] ENGINE_API std::string_view version() noexcept;
 
 struct EngineConfig {
@@ -38,8 +40,8 @@ struct EngineConfig {
     std::uint32_t taskThreads = 0;
 };
 
-/// The engine kernel: owns the subsystems, the active scene, the event
-/// dispatcher and the task scheduler, and drives the frame loop.
+/// The engine kernel: owns the subsystems, the asset system, the active scene, the
+/// event dispatcher and the task scheduler, and drives the frame loop.
 ///
 /// Typical host usage:
 ///
@@ -118,6 +120,10 @@ public:
     /// are delivered at the start of the next Tick(). Main thread only.
     [[nodiscard]] ENGINE_API entt::dispatcher& GetEvents() noexcept;
     [[nodiscard]] ENGINE_API Scene& GetScene() noexcept;
+    /// Meshes, textures and shaders by name. Kernel state rather than a subsystem: it
+    /// exists from construction, is ready as soon as Initialize() has started the
+    /// scheduler, and is pumped once per Tick before the subsystems update.
+    [[nodiscard]] ENGINE_API AssetSystem& GetAssets() noexcept;
     /// enkiTS scheduler, running between Initialize() and Shutdown().
     /// The calling (main) thread takes part in WaitforTask().
     [[nodiscard]] ENGINE_API enki::TaskScheduler& GetTaskScheduler() noexcept;
