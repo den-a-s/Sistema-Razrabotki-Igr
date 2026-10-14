@@ -20,23 +20,26 @@
 namespace engine {
 
 /// Output of the CPU phase (worker thread): file bytes, parsed geometry, compiled
-/// bytecode. Contains no device objects and touches no shared registry state.
+/// bytecode. Contains no shared registry state.
 struct MeshCpu {
     std::vector<ugly_utils::VertData> vertices;
     std::vector<uint32_t> indices;
 };
 
-struct BytesCpu {
-    std::vector<uint8_t> bytes;
-    bool isDds = false;
+/// The decoded texture, already a device resource: WIC decoding a 4K image and building its
+/// mip chain is the expensive part of a texture load, and it has to happen on the worker.
+/// ID3D11Device is free-threaded (never created with SINGLETHREADED), so creating resources
+/// from a worker while the main thread submits is supported; only the device context is not.
+struct TextureCpu {
+    ComPtr<ID3D11ShaderResourceView> view;
 };
 
 struct CpuPayload {
-    enum class Kind : uint8_t { None, Mesh, Bytes, Shader };
+    enum class Kind : uint8_t { None, Mesh, Texture, Shader };
 
     Kind kind = Kind::None;
     MeshCpu mesh;
-    BytesCpu bytes;
+    TextureCpu texture;
     CompiledShader shader;
 };
 
@@ -58,21 +61,23 @@ struct UploadTransfer {
 };
 
 /// Two-phase importer: ReadCpu is thread-safe and may run on a worker; UploadGpu must run
-/// on the main thread (device creation and HandleMap insertion). Neither terminates the
-/// process: failures return false with a message.
+/// on the main thread (HandleMap insertion). Neither terminates the process: failures return
+/// false with a message. `device` is the free-threaded ID3D11Device, given to ReadCpu so the
+/// expensive part of a texture load can happen on the worker; importers that only parse bytes
+/// ignore it. It must never be used to touch the device context.
 class IAssetImporter {
 public:
     virtual ~IAssetImporter() = default;
 
-    [[nodiscard]] virtual bool ReadCpu(const AssetDesc& desc, CpuPayload& payload,
-                                       std::string& error) const = 0;
+    [[nodiscard]] virtual bool ReadCpu(const AssetDesc& desc, ID3D11Device* device,
+                                       CpuPayload& payload, std::string& error) const = 0;
     [[nodiscard]] virtual bool UploadGpu(const UploadTransfer& transfer, const CpuPayload& payload,
                                          GpuPayload& result, std::string& error) const = 0;
 };
 
 class AssimpMeshImporter final : public IAssetImporter {
 public:
-    [[nodiscard]] bool ReadCpu(const AssetDesc& desc, CpuPayload& payload,
+    [[nodiscard]] bool ReadCpu(const AssetDesc& desc, ID3D11Device* device, CpuPayload& payload,
                                std::string& error) const override;
     [[nodiscard]] bool UploadGpu(const UploadTransfer& transfer, const CpuPayload& payload,
                                  GpuPayload& result, std::string& error) const override;
@@ -80,7 +85,7 @@ public:
 
 class TextureImporter final : public IAssetImporter {
 public:
-    [[nodiscard]] bool ReadCpu(const AssetDesc& desc, CpuPayload& payload,
+    [[nodiscard]] bool ReadCpu(const AssetDesc& desc, ID3D11Device* device, CpuPayload& payload,
                                std::string& error) const override;
     [[nodiscard]] bool UploadGpu(const UploadTransfer& transfer, const CpuPayload& payload,
                                  GpuPayload& result, std::string& error) const override;
@@ -88,7 +93,7 @@ public:
 
 class ShaderImporter final : public IAssetImporter {
 public:
-    [[nodiscard]] bool ReadCpu(const AssetDesc& desc, CpuPayload& payload,
+    [[nodiscard]] bool ReadCpu(const AssetDesc& desc, ID3D11Device* device, CpuPayload& payload,
                                std::string& error) const override;
     [[nodiscard]] bool UploadGpu(const UploadTransfer& transfer, const CpuPayload& payload,
                                  GpuPayload& result, std::string& error) const override;
@@ -127,6 +132,7 @@ struct LoadJob final : public enki::ITaskSet {
     uint32_t generation = 0;
     const AssetDesc* desc = nullptr;
     const IAssetImporter* importer = nullptr;
+    ID3D11Device* device = nullptr;
     CpuPayload payload;
     std::string error;
     bool cpuOk = false;
@@ -134,7 +140,7 @@ struct LoadJob final : public enki::ITaskSet {
 
     void ExecuteRange(enki::TaskSetPartition /*range*/, uint32_t threadnum) override {
         const auto start = std::chrono::steady_clock::now();
-        cpuOk = importer->ReadCpu(*desc, payload, error);
+        cpuOk = importer->ReadCpu(*desc, device, payload, error);
         const auto cpuSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         const auto queueDelaySeconds = std::chrono::duration<double>(start - queuedAt).count();
         // threadnum 0 is the thread that called TaskScheduler::Initialize(), i.e. the main one:

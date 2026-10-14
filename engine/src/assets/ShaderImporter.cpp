@@ -6,7 +6,8 @@
 
 namespace engine {
 
-bool ShaderImporter::ReadCpu(const AssetDesc& desc, CpuPayload& payload, std::string& error) const {
+bool ShaderImporter::ReadCpu(const AssetDesc& desc, ID3D11Device* /*device*/, CpuPayload& payload,
+                            std::string& error) const {
     const auto path = AssetPathResolver::ResolveShader(desc);
 
     auto compiled = ShaderContext::CompileCpu(path.native(), desc.shaderStage);

@@ -56,7 +56,8 @@ void CenterAndNormalize(MeshCpu& mesh) {
 
 }  // namespace
 
-bool AssimpMeshImporter::ReadCpu(const AssetDesc& desc, CpuPayload& payload, std::string& error) const {
+bool AssimpMeshImporter::ReadCpu(const AssetDesc& desc, ID3D11Device* /*device*/, CpuPayload& payload,
+                                 std::string& error) const {
     const std::filesystem::path path = AssetPathResolver::ResolveMesh(desc);
 
     // A per-call Importer: Assimp is only safe for concurrent loads when instances are not

@@ -126,14 +126,14 @@ target_link_libraries(engine
     PUBLIC
         spdlog::spdlog Microsoft::DirectXTK
     PRIVATE
-        d3d11 d3dcompiler dxgi dxguid
+        d3d11 d3dcompiler dxgi dxguid ole32
 )
 
 target_link_libraries(engine_static
     PUBLIC
         spdlog::spdlog Microsoft::DirectXTK
     PRIVATE
-        d3d11 d3dcompiler dxgi dxguid
+        d3d11 d3dcompiler dxgi dxguid ole32
 )
 
 set_target_properties(engine PROPERTIES

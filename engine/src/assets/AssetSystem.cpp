@@ -230,6 +230,8 @@ void AssetSystem::DispatchJob(const AssetKind kind, const AssetDesc& desc, const
     job->generation = generation;
     job->desc = &desc;
     job->importer = importers_[static_cast<size_t>(kind)].get();
+    // Resolved here, on the main thread: the worker only uses the free-threaded device.
+    job->device = MakeTransfer().device;
     job->queuedAt = std::chrono::steady_clock::now();
     spdlog::info("AssetSystem: queued '{}' ({}) on frame {}", desc.name, ToString(kind),
                  GetEngine().GetFrame().frameIndex);
