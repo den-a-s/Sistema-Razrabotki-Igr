@@ -108,9 +108,9 @@ private:
     std::unique_ptr<LoadJob> TakeJob(AssetKind kind, uint32_t slot);
     /// Uploads a completed job's payload and publishes or fails the record; returns the
     /// value pointer or nullptr. Fires AssetLoadedEvent / AssetFailedEvent.
-    void FinishJob(const LoadJob& job);
+    void FinishJob(const LoadJob& job, uint64_t frameIndex);
     template <typename T>
-    T* FinishTyped(const LoadJob& job, AssetTable<T>& table, AssetHandle<T> handle);
+    T* FinishTyped(const LoadJob& job, AssetTable<T>& table, AssetHandle<T> handle, uint64_t frameIndex);
 
     [[nodiscard]] UploadTransfer MakeTransfer() const;
     [[nodiscard]] const IAssetImporter& ImporterFor(AssetKind kind) const;

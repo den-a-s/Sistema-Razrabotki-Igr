@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -129,11 +130,17 @@ struct LoadJob final : public enki::ITaskSet {
     CpuPayload payload;
     std::string error;
     bool cpuOk = false;
+    std::chrono::steady_clock::time_point queuedAt{};
 
     void ExecuteRange(enki::TaskSetPartition /*range*/, uint32_t threadnum) override {
-        // threadnum 0 is the thread that called TaskScheduler::Initialize(), i.e. the main one.
-        spdlog::debug("Asset load '{}' dispatched to thread {}", name, threadnum);
+        const auto start = std::chrono::steady_clock::now();
         cpuOk = importer->ReadCpu(*desc, payload, error);
+        const auto cpuSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        const auto queueDelaySeconds = std::chrono::duration<double>(start - queuedAt).count();
+        // threadnum 0 is the thread that called TaskScheduler::Initialize(), i.e. the main one:
+        // a non-zero number here is the proof that the read never blocked the game loop.
+        spdlog::info("Asset '{}': CPU phase ran on worker {} ({} s in the pipe, {} s of work)",
+                     name, threadnum, queueDelaySeconds, cpuSeconds);
     }
 };
 

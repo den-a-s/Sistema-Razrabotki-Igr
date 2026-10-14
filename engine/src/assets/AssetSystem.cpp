@@ -1,6 +1,7 @@
 #include <engine/assets/AssetSystem.hpp>
 
 #include <cassert>
+#include <chrono>
 #include <string>
 #include <utility>
 
@@ -68,6 +69,20 @@ T* FailLoad(AssetTable<T>& table, const AssetHandle<T> handle, const std::string
     return nullptr;
 }
 
+constexpr std::string_view ToString(const AssetKind kind) {
+    switch (kind) {
+    case AssetKind::Mesh:
+        return "mesh";
+    case AssetKind::Texture:
+        return "texture";
+    case AssetKind::Shader:
+        return "shader";
+    case AssetKind::Count:
+        break;
+    }
+    return "unknown";
+}
+
 }  // namespace
 
 AssetSystem::AssetSystem() = default;
@@ -91,7 +106,7 @@ bool AssetSystem::Initialize() {
     return true;
 }
 
-void AssetSystem::Update(const FrameContext& /*frame*/) {
+void AssetSystem::Update(const FrameContext& frame) {
     // The worker only fills its payload; device calls and table writes stay on this thread.
     // inFlight_ itself is touched from here and LoadSync only, so it needs no lock.
     for (auto it = inFlight_.begin(); it != inFlight_.end();) {
@@ -101,7 +116,7 @@ void AssetSystem::Update(const FrameContext& /*frame*/) {
         }
         std::unique_ptr<LoadJob> completed = std::move(*it);
         it = inFlight_.erase(it);
-        FinishJob(*completed);  // ~ICompletable asserts completion, so destroy only now
+        FinishJob(*completed, frame.frameIndex);  // ~ICompletable asserts completion, so destroy only now
     }
 }
 
@@ -202,7 +217,7 @@ T* AssetSystem::LoadSync(const AssetHandle<T> handle) {
         return FailLoad(table, handle, "load job disappeared from the scheduler");
     }
     GetEngine().GetTaskScheduler().WaitforTask(job.get());
-    return FinishTyped(*job, table, handle);
+    return FinishTyped(*job, table, handle, GetEngine().GetFrame().frameIndex);
 }
 
 void AssetSystem::DispatchJob(const AssetKind kind, const AssetDesc& desc, const uint32_t slot,
@@ -215,6 +230,9 @@ void AssetSystem::DispatchJob(const AssetKind kind, const AssetDesc& desc, const
     job->generation = generation;
     job->desc = &desc;
     job->importer = importers_[static_cast<size_t>(kind)].get();
+    job->queuedAt = std::chrono::steady_clock::now();
+    spdlog::info("AssetSystem: queued '{}' ({}) on frame {}", desc.name, ToString(kind),
+                 GetEngine().GetFrame().frameIndex);
     LoadJob* scheduled = job.get();
     inFlight_.push_back(std::move(job));
     GetEngine().GetTaskScheduler().AddTaskSetToPipe(scheduled);
@@ -231,16 +249,16 @@ std::unique_ptr<LoadJob> AssetSystem::TakeJob(const AssetKind kind, const uint32
     return nullptr;
 }
 
-void AssetSystem::FinishJob(const LoadJob& job) {
+void AssetSystem::FinishJob(const LoadJob& job, const uint64_t frameIndex) {
     switch (job.kind) {
     case AssetKind::Mesh:
-        FinishTyped(job, meshes_, AssetHandle<MeshAsset>{job.slot, job.generation});
+        FinishTyped(job, meshes_, AssetHandle<MeshAsset>{job.slot, job.generation}, frameIndex);
         break;
     case AssetKind::Texture:
-        FinishTyped(job, textures_, AssetHandle<TextureAsset>{job.slot, job.generation});
+        FinishTyped(job, textures_, AssetHandle<TextureAsset>{job.slot, job.generation}, frameIndex);
         break;
     case AssetKind::Shader:
-        FinishTyped(job, shaders_, AssetHandle<ShaderAsset>{job.slot, job.generation});
+        FinishTyped(job, shaders_, AssetHandle<ShaderAsset>{job.slot, job.generation}, frameIndex);
         break;
     case AssetKind::Count:
         break;
@@ -248,7 +266,8 @@ void AssetSystem::FinishJob(const LoadJob& job) {
 }
 
 template <typename T>
-T* AssetSystem::FinishTyped(const LoadJob& job, AssetTable<T>& table, const AssetHandle<T> handle) {
+T* AssetSystem::FinishTyped(const LoadJob& job, AssetTable<T>& table, const AssetHandle<T> handle,
+                            const uint64_t frameIndex) {
     typename AssetTable<T>::Record* record = table.Get(handle);
     if (record == nullptr) {
         return nullptr;  // the record was recycled while the job ran; the result is stale
@@ -266,6 +285,11 @@ T* AssetSystem::FinishTyped(const LoadJob& job, AssetTable<T>& table, const Asse
         GetEngine().GetEvents().trigger(AssetFailedEvent{job.id, job.name, job.kind, error});
         return failed;
     }
+
+    const auto totalSeconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - job.queuedAt).count();
+    spdlog::info("AssetSystem: '{}' ({}) published on frame {} ({} s after queueing)",
+                 job.name, ToString(job.kind), frameIndex, totalSeconds);
 
     T* value = table.Publish(handle, MakeValue<T>(record->value, gpu));
     GetEngine().GetEvents().trigger(AssetLoadedEvent{job.id, job.name, job.kind});
