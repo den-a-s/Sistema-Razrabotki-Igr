@@ -5,7 +5,6 @@
 #include <string>
 #include <string_view>
 
-#include <engine/core/ResourceID.hpp>
 #include <engine/rendering/resources/ShaderContext.hpp>
 
 namespace engine {

@@ -27,11 +27,11 @@ bool IsSatisfied(const typename AssetTable<T>::Record& record) {
     if constexpr (std::is_same_v<T, ShaderAsset>) {
         switch (record.desc.shaderStage) {
         case ShaderType::Vertex:
-            return static_cast<bool>(record.value.vertex);
+            return static_cast<bool>(record.value->vertex);
         case ShaderType::Pixel:
-            return static_cast<bool>(record.value.pixel);
+            return static_cast<bool>(record.value->pixel);
         case ShaderType::Geometry:
-            return static_cast<bool>(record.value.geometry);
+            return static_cast<bool>(record.value->geometry);
         }
         return false;
     } else {
@@ -39,14 +39,16 @@ bool IsSatisfied(const typename AssetTable<T>::Record& record) {
     }
 }
 
+/// The value to publish: for a shader record the stages of the resource it already
+/// published are carried over, because a resource handed out earlier is never mutated.
 template <typename T>
-T MakeValue(const T& existing, const GpuPayload& gpu) {
+T MakeValue(const entt::resource<T>& existing, const GpuPayload& gpu) {
     if constexpr (std::is_same_v<T, MeshAsset>) {
         return MeshAsset{gpu.mesh};
     } else if constexpr (std::is_same_v<T, TextureAsset>) {
         return TextureAsset{gpu.texture};
     } else {
-        ShaderAsset value = existing;
+        ShaderAsset value = existing ? ShaderAsset{*existing} : ShaderAsset{};
         if (gpu.vertex) {
             value.vertex = gpu.vertex;
         }
@@ -61,12 +63,12 @@ T MakeValue(const T& existing, const GpuPayload& gpu) {
 }
 
 template <typename T>
-T* FailLoad(AssetTable<T>& table, const AssetHandle<T> handle, const std::string& error) {
+entt::resource<T> FailLoad(AssetTable<T>& table, const AssetHandle<T> handle, const std::string& error) {
     const typename AssetTable<T>::Record* record = table.Get(handle);
     spdlog::error("AssetSystem: failed to load '{}': {}",
                   record != nullptr ? record->desc.name : std::string{}, error);
     table.Fail(handle, error);
-    return nullptr;
+    return {};
 }
 
 constexpr std::string_view ToString(const AssetKind kind) {
@@ -119,15 +121,15 @@ void AssetSystem::Shutdown() {
     inFlight_.clear();
 }
 
-MeshAsset* AssetSystem::LoadMesh(const std::string_view name, const bool centerOnLoad) {
+entt::resource<MeshAsset> AssetSystem::LoadMesh(const std::string_view name, const bool centerOnLoad) {
     return LoadSync(RequestMesh(name, centerOnLoad));
 }
 
-TextureAsset* AssetSystem::LoadTexture(const std::string_view name) {
+entt::resource<TextureAsset> AssetSystem::LoadTexture(const std::string_view name) {
     return LoadSync(RequestTexture(name));
 }
 
-ShaderAsset* AssetSystem::LoadShader(const std::string_view name, const ShaderType stage) {
+entt::resource<ShaderAsset> AssetSystem::LoadShader(const std::string_view name, const ShaderType stage) {
     AssetDesc desc;
     desc.name = NormalizeName(name);
     desc.path = AssetPathResolver::DefaultPath(desc.name, AssetKind::Shader);
@@ -181,17 +183,17 @@ AssetHandle<T> AssetSystem::Request(AssetDesc&& desc) {
 }
 
 template <typename T>
-T* AssetSystem::LoadSync(const AssetHandle<T> handle) {
+entt::resource<T> AssetSystem::LoadSync(const AssetHandle<T> handle) {
     if (!handle) {
-        return nullptr;
+        return {};
     }
     AssetTable<T>& table = Table<T>();
     typename AssetTable<T>::Record* record = table.Get(handle);
     if (record == nullptr) {
-        return nullptr;
+        return {};
     }
     if (IsSatisfied<T>(*record)) {
-        return &record->value;
+        return record->value;
     }
 
     const AssetKind kind = AssetValueKind<T>::value;
@@ -260,14 +262,14 @@ void AssetSystem::FinishJob(const LoadJob& job, const uint64_t frameIndex) {
 }
 
 template <typename T>
-T* AssetSystem::FinishTyped(const LoadJob& job, AssetTable<T>& table, const AssetHandle<T> handle,
-                            const uint64_t frameIndex) {
+entt::resource<T> AssetSystem::FinishTyped(const LoadJob& job, AssetTable<T>& table,
+                                           const AssetHandle<T> handle, const uint64_t frameIndex) {
     typename AssetTable<T>::Record* record = table.Get(handle);
     if (record == nullptr) {
-        return nullptr;  // the record was recycled while the job ran; the result is stale
+        return {};  // the record was recycled while the job ran; the result is stale
     }
     if (!job.cpuOk) {
-        T* failed = FailLoad(table, handle, job.error);
+        entt::resource<T> failed = FailLoad(table, handle, job.error);
         engine_.GetEvents().trigger(AssetFailedEvent{job.id, job.name, job.kind, job.error});
         return failed;
     }
@@ -280,7 +282,7 @@ T* AssetSystem::FinishTyped(const LoadJob& job, AssetTable<T>& table, const Asse
     GpuPayload gpu;
     std::string error;
     if (!ImporterFor(job.kind).UploadGpu(MakeTransfer(*rendering), job.payload, gpu, error)) {
-        T* failed = FailLoad(table, handle, error);
+        entt::resource<T> failed = FailLoad(table, handle, error);
         engine_.GetEvents().trigger(AssetFailedEvent{job.id, job.name, job.kind, error});
         return failed;
     }
@@ -290,7 +292,7 @@ T* AssetSystem::FinishTyped(const LoadJob& job, AssetTable<T>& table, const Asse
     spdlog::info("AssetSystem: '{}' ({}) published on frame {} ({} s after queueing)",
                  job.name, ToString(job.kind), frameIndex, totalSeconds);
 
-    T* value = table.Publish(handle, MakeValue<T>(record->value, gpu));
+    entt::resource<T> value = table.Publish(handle, MakeValue<T>(record->value, gpu));
     engine_.GetEvents().trigger(AssetLoadedEvent{job.id, job.name, job.kind});
     return value;
 }

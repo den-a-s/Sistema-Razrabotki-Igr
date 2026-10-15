@@ -8,7 +8,6 @@
 #include <engine/engine_export.hpp>
 #include <wrl/client.h>
 
-#include <engine/core/ResourceID.hpp>
 #include <engine/rendering/resources/VertexLayoutCache.hpp>
 
 namespace engine {

@@ -13,14 +13,18 @@
 #include <engine/assets/AssetCommon.hpp>
 #include <engine/assets/AssetHandle.hpp>
 
+#include <entt/resource/resource.hpp>
+
 namespace engine {
 
 /// Records of one asset type, addressed by normalized name.
 ///
-/// A slot is only recycled after a load attempt that never reached Ready, so a pointer
-/// returned by Publish() keeps describing the same asset for the rest of the run. Handles
-/// additionally carry a generation: a handle taken before such a recycle resolves to
-/// "stale" instead of to whatever asset took the slot.
+/// A value is handed out as an entt::resource, so it outlives the record it was published
+/// from: a slot is only recycled after a load attempt that never reached Ready, and callers
+/// that still hold the resource keep reading the same asset either way.
+///
+/// The AssetHandle used to address a record carries a generation: one taken before such a
+/// recycle resolves to "stale" instead of to whatever asset took the slot.
 template <typename T>
 class AssetTable {
 public:
@@ -29,7 +33,7 @@ public:
         ResourceID id = 0;
         uint32_t generation = 0;
         AssetDesc desc;
-        T value{};
+        entt::resource<T> value;
         std::string error;
     };
 
@@ -92,15 +96,18 @@ public:
         return const_cast<AssetTable*>(this)->Get(handle);
     }
 
-    T* Publish(const AssetHandle<T> handle, T&& value) {
+    /// Stores the loaded value and marks the record Ready; returns an empty resource for a
+    /// stale handle. Re-publishing (a second shader stage on the same record) swaps in a new
+    /// value: whoever took the resource earlier keeps reading the asset as it was then.
+    entt::resource<T> Publish(const AssetHandle<T> handle, T&& value) {
         Record* record = Get(handle);
         if (record == nullptr) {
-            return nullptr;
+            return {};
         }
-        record->value = std::move(value);
+        record->value = entt::resource<T>{std::make_shared<T>(std::move(value))};
         record->state = AssetState::Ready;
         record->error.clear();
-        return &record->value;
+        return record->value;
     }
 
     void MarkLoading(const AssetHandle<T> handle) {

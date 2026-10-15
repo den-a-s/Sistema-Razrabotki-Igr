@@ -1,37 +1,22 @@
 #pragma once
-#include <cstdint>
 #include <string>
 #include <string_view>
 
+#include <entt/core/hashed_string.hpp>
+
 namespace engine {
 
-//Simple string hash for resource names, used as the fast key for assets and shaders.
+// Fast key for resource names, used by the asset tables and the shader context.
 //
-//Collisions are not resolved by re-hashing: every asset table also stores the normalized
-//name it was created with, so a collision between two different names is detected and
-//reported instead of silently aliasing one resource onto another.
+// The hash is EnTT's own: FNV-1a over the name as is, at the width of entt::id_type, which
+// stays 32 bits here because ENTT_ID_TYPE is not set. So the odds of a collision are exactly
+// those of the hand-written FNV-32 this replaced; the id is shared with EnTT, not widened.
+//
+// Collisions are therefore still not resolved by re-hashing: every asset table also stores
+// the normalized name it was created with, so a collision between two different names is
+// detected and reported instead of silently aliasing one resource onto another.
 
-constexpr std::uint32_t FNV_PRIME = 16777619u;
-constexpr std::uint32_t FNV_OFFSET_BASIS = 2166136261u;
-
-constexpr std::uint32_t fnv1a_32(const std::string_view str) noexcept {
-    std::uint32_t hash = FNV_OFFSET_BASIS;
-
-    for (const char c : str) {
-        hash ^= static_cast<std::uint8_t>(c);
-        hash *= FNV_PRIME;
-    }
-
-    return hash;
-}
-
-using ResourceID = std::uint32_t;
-
-constexpr ResourceID operator""_rid(
-    const char* str,
-    const size_t len) {
-    return fnv1a_32(std::string_view(str, len));
-}
+using ResourceID = entt::hashed_string::hash_type;
 
 /// Names are compared case insensitively and with '/' separators, so "Models/Table" and
 /// "models/table" address the same resource. An empty result means "not a usable name".
@@ -47,9 +32,9 @@ constexpr std::string NormalizeName(const std::string_view name) {
     return result;
 }
 
-/// ResourceID of a name; pairs with operator""_rid because both hash the given string as is.
+/// ResourceID of a name; pairs with entt::hashed_string because both hash the given string as is.
 constexpr ResourceID ToResourceID(const std::string_view name) {
-    return fnv1a_32(name);
+    return entt::hashed_string::value(name.data(), name.size());
 }
 
 }

@@ -12,6 +12,8 @@
 #include <engine/assets/AssetTypes.hpp>
 #include <engine/engine_export.hpp>
 
+#include <entt/resource/resource.hpp>
+
 namespace engine {
 
 struct FrameContext;
@@ -50,13 +52,13 @@ public:
 
     /// Blocking loads, for boot-time assets: the CPU phase may already run on a worker
     /// (started by the Request* inside), the call waits for it and uploads on this thread.
-    /// The returned pointer lives until a failed re-load recycles the slot; re-taking it
-    /// via Peek() after any such recycle is the safe pattern. nullptr on failure.
-    MeshAsset* LoadMesh(std::string_view name, bool centerOnLoad = false);
-    TextureAsset* LoadTexture(std::string_view name);
+    /// The returned resource keeps the asset alive on its own, so it stays readable after a
+    /// failed re-load recycled the record. Empty resource on failure.
+    entt::resource<MeshAsset> LoadMesh(std::string_view name, bool centerOnLoad = false);
+    entt::resource<TextureAsset> LoadTexture(std::string_view name);
     /// Compiles one file for one stage and merges it into the ShaderAsset of that name;
     /// call again with another stage to add it to the same record.
-    ShaderAsset* LoadShader(std::string_view name, ShaderType stage);
+    entt::resource<ShaderAsset> LoadShader(std::string_view name, ShaderType stage);
 
     /// Starts loading without blocking. Deduplicated: repeated requests for a Loading or
     /// Ready name return the same handle. Invalid() when the name hashes onto a different
@@ -72,21 +74,22 @@ public:
         return record != nullptr ? record->state : AssetState::Unloaded;
     }
 
-    /// The loaded value, or nullptr while the asset is not Ready.
+    /// The loaded asset, or an empty resource while it is not Ready.
     template <typename T>
-    [[nodiscard]] T* Peek(std::string_view name) {
+    [[nodiscard]] entt::resource<T> Peek(std::string_view name) {
         return Peek<T>(Table<T>().Find(NormalizeName(name)));
     }
 
-    /// Generation-checked: a handle whose slot was recycled for another asset reads as
-    /// nullptr instead of returning the wrong value.
+    /// Generation-checked: a handle whose slot was recycled for another asset reads as empty
+    /// instead of returning the wrong asset. A resource taken while the asset was Ready
+    /// outlives that recycle: it shares the value, not the record.
     template <typename T>
-    [[nodiscard]] T* Peek(const AssetHandle<T> handle) {
+    [[nodiscard]] entt::resource<T> Peek(const AssetHandle<T> handle) {
         const typename AssetTable<T>::Record* record = Table<T>().Get(handle);
         if (record == nullptr || record->state != AssetState::Ready) {
-            return nullptr;
+            return {};
         }
-        return const_cast<T*>(&record->value);  // NOLINT(readability-const-cast): this isn't const
+        return record->value;
     }
 
     template <typename T>
@@ -101,19 +104,20 @@ private:
 
     /// Waits for the background CPU phase if one is running, uploads on the calling thread.
     template <typename T>
-    T* LoadSync(AssetHandle<T> handle);
+    entt::resource<T> LoadSync(AssetHandle<T> handle);
 
     /// Queues the CPU phase of one record on the scheduler. `desc` must point into the
     /// stable record storage: workers read it while the main thread keeps streaming frames.
     void DispatchJob(AssetKind kind, const AssetDesc& desc, uint32_t slot, uint32_t generation);
-    /// Detaches the scheduled job for one record; main thread only, nullptr if it is gone.
+    /// Detaches the scheduled job for one record; main thread only, empty if it is gone.
     /// Slot numbers repeat across the tables, so the kind is part of the match.
     std::unique_ptr<LoadJob> TakeJob(AssetKind kind, uint32_t slot);
     /// Uploads a completed job's payload and publishes or fails the record; returns the
-    /// value pointer or nullptr. Fires AssetLoadedEvent / AssetFailedEvent.
+    /// asset resource, empty on failure or when the record went stale. Fires
+    /// AssetLoadedEvent / AssetFailedEvent.
     void FinishJob(const LoadJob& job, uint64_t frameIndex);
     template <typename T>
-    T* FinishTyped(const LoadJob& job, AssetTable<T>& table, AssetHandle<T> handle, uint64_t frameIndex);
+    entt::resource<T> FinishTyped(const LoadJob& job, AssetTable<T>& table, AssetHandle<T> handle, uint64_t frameIndex);
 
     /// Resolved per upload, not cached: as a kernel piece this exists before any subsystem
     /// has been registered, so there is nothing to point at in Initialize().

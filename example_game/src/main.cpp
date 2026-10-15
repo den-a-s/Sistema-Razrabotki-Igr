@@ -348,14 +348,14 @@ public:
 
 private:
     void TryBuildScene() {
-        const auto* tableMesh = assets_->Peek(tableMesh_);
-        const auto* signMesh = assets_->Peek(signMesh_);
-        const auto* hammerMesh = assets_->Peek(hammerMesh_);
-        const auto* tableTexture = assets_->Peek(tableTexture_);
-        const auto* signTexture = assets_->Peek(signTexture_);
-        const auto* hammerTexture = assets_->Peek(hammerTexture_);
-        if (tableMesh == nullptr || signMesh == nullptr || hammerMesh == nullptr ||
-            tableTexture == nullptr || signTexture == nullptr || hammerTexture == nullptr) {
+        const auto tableMesh = assets_->Peek(tableMesh_);
+        const auto signMesh = assets_->Peek(signMesh_);
+        const auto hammerMesh = assets_->Peek(hammerMesh_);
+        const auto tableTexture = assets_->Peek(tableTexture_);
+        const auto signTexture = assets_->Peek(signTexture_);
+        const auto hammerTexture = assets_->Peek(hammerTexture_);
+        if (!tableMesh || !signMesh || !hammerMesh ||
+            !tableTexture || !signTexture || !hammerTexture) {
             return;
         }
 
