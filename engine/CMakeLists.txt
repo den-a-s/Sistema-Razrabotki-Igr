@@ -186,6 +186,8 @@ find_package(assimp CONFIG REQUIRED)
 
 set(ENGINE_CORE_HEADERS
     include/engine/rendering/RenderingSubsystem.hpp
+    include/engine/rendering/RenderComponents.hpp
+    include/engine/rendering/SceneRenderSubsystem.hpp
     include/engine/assets/AssetCommon.hpp
     include/engine/assets/AssetEvents.hpp
     include/engine/assets/AssetHandle.hpp
@@ -205,6 +207,7 @@ set(ENGINE_CORE_HEADERS
 
 set(ENGINE_CORE_SOURCES
     src/rendering/RenderingSubsystem.cpp
+    src/rendering/SceneRenderSubsystem.cpp
     src/assets/AssetSystem.cpp
     src/assets/AssimpMeshImporter.cpp
     src/assets/ShaderImporter.cpp

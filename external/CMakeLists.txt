@@ -44,5 +44,26 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui.cpp")
     set_target_properties(imgui PROPERTIES FOLDER "external")
 endif()
 
+# --- Qt Advanced Docking System (editor only) ------------------------------
+# A submodule rather than vcpkg: the vcpkg port depends on qtbase and would
+# build a second Qt next to the aqt one the editor uses. Shared library (LGPL).
+if(SRI_BUILD_EDITOR)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Qt-Advanced-Docking-System/CMakeLists.txt")
+        set(BUILD_EXAMPLES OFF)
+        set(BUILD_STATIC OFF)
+        add_subdirectory(Qt-Advanced-Docking-System EXCLUDE_FROM_ALL)
+        # ADS picks its own x64/bin and x64/lib; put it next to editor.exe like Engine.dll,
+        # so a rebuilt ADS is picked up even when the editor itself doesn't relink.
+        set_target_properties(qtadvanceddocking-qt6 PROPERTIES
+            FOLDER "external"
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}"
+            ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}"
+        )
+    else()
+        message(FATAL_ERROR "external/Qt-Advanced-Docking-System is missing -- run: git submodule update --init")
+    endif()
+endif()
+
 # vcpkg itself is usually a submodule too (external/vcpkg); it is consumed by
 # cmake/Vcpkg.cmake before project() and must NOT be add_subdirectory()'d here.
