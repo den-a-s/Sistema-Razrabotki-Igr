@@ -168,7 +168,7 @@ AssetHandle<T> AssetSystem::Request(AssetDesc&& desc) {
 
     AssetHandle<T> handle = table.Acquire(std::move(desc));
     if (!handle) {
-        const AssetTable<T>::Record* collision = table.FindCollision(name);
+        const typename AssetTable<T>::Record* collision = table.FindCollision(name);
         spdlog::error("AssetSystem: name '{}' hashes to the same id as already registered '{}'",
                       name, collision != nullptr ? collision->desc.name : std::string{});
         return AssetHandle<T>::Invalid();
