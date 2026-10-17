@@ -7,11 +7,7 @@
 namespace editor {
 
 /// The area the engine renders into. Owns a native window (HWND) that is
-/// handed to the engine as its NativeSurface.
-///
-/// Until a rendering subsystem exists this just paints a placeholder. Once
-/// the renderer presents into our HWND, set Qt::WA_PaintOnScreen and return
-/// nullptr from paintEngine() so Qt stops painting over the swap chain.
+/// handed to the engine as its NativeSurface; Qt never paints it
 class ViewportWidget : public QWidget {
     Q_OBJECT
 
@@ -20,12 +16,14 @@ public:
 
     [[nodiscard]] engine::NativeSurface surface();
 
+    /// No Qt painting at all, so it can't draw over the swap chain.
+    [[nodiscard]] QPaintEngine* paintEngine() const override;
+
 signals:
     /// Size in physical pixels.
     void surfaceResized(quint32 width, quint32 height);
 
 protected:
-    void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
 private:

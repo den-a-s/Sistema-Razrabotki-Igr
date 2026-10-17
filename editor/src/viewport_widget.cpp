@@ -1,6 +1,5 @@
 #include <editor/viewport_widget.hpp>
 
-#include <QPainter>
 #include <QResizeEvent>
 
 #include <cmath>
@@ -11,6 +10,7 @@ ViewportWidget::ViewportWidget(QWidget* parent) : QWidget(parent) {
     // A real native child window, so the renderer can create a swap chain on it.
     setAttribute(Qt::WA_NativeWindow);
     setAttribute(Qt::WA_NoSystemBackground);
+    setAttribute(Qt::WA_PaintOnScreen);
     setFocusPolicy(Qt::StrongFocus);
     setMinimumSize(64, 64);
 }
@@ -24,11 +24,8 @@ engine::NativeSurface ViewportWidget::surface() {
     };
 }
 
-void ViewportWidget::paintEvent(QPaintEvent*) {
-    QPainter painter(this);
-    painter.fillRect(rect(), QColor(40, 40, 46));
-    painter.setPen(QColor(140, 140, 150));
-    painter.drawText(rect(), Qt::AlignCenter, tr("Viewport (no renderer attached)"));
+QPaintEngine* ViewportWidget::paintEngine() const {
+    return nullptr;
 }
 
 void ViewportWidget::resizeEvent(QResizeEvent* event) {
