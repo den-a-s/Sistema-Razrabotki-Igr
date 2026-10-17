@@ -185,6 +185,8 @@ find_package(enkiTS CONFIG REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
 set(ENGINE_CORE_HEADERS
+    include/engine/input/InputSubsystem.hpp
+    include/engine/input/InputTypes.hpp
     include/engine/rendering/RenderingSubsystem.hpp
     include/engine/rendering/RenderComponents.hpp
     include/engine/rendering/SceneRenderSubsystem.hpp
@@ -207,6 +209,7 @@ set(ENGINE_CORE_HEADERS
 
 set(ENGINE_CORE_SOURCES
     src/rendering/RenderingSubsystem.cpp
+    src/input/InputSubsystem.cpp
     src/rendering/SceneRenderSubsystem.cpp
     src/assets/AssetSystem.cpp
     src/assets/AssimpMeshImporter.cpp
