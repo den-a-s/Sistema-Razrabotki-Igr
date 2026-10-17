@@ -8,6 +8,8 @@
 #include <TaskScheduler.h>
 #include <spdlog/spdlog.h>
 
+#include <engine/assets/AssetSystem.hpp>
+
 namespace engine {
 
 //TODO: Log system 
@@ -40,13 +42,19 @@ struct Engine::Impl {
     entt::dispatcher events;
     Scene scene;
     enki::TaskScheduler scheduler;
+    // Kernel state, so it is reachable before any subsystem is registered.
+    std::unique_ptr<AssetSystem> assets;
 };
 
 std::string_view version() noexcept {
     return "0.1.0";
 }
 
-Engine::Engine(EngineConfig config) : impl_(std::make_unique<Impl>(std::move(config))) {}
+Engine::Engine(EngineConfig config) : impl_(std::make_unique<Impl>(std::move(config))) {
+    // Part of the kernel, so it exists from the start: subsystems reach it from their
+    // Initialize() regardless of registration order.
+    impl_->assets = std::make_unique<AssetSystem>(*this);
+}
 
 // Defined here, not in the header: the destructor of unique_ptr<Impl> needs the
 // complete type, and only this translation unit has it.
@@ -106,6 +114,9 @@ bool Engine::Initialize() {
     }
     spdlog::info("Task scheduler running with {} threads", impl_->scheduler.GetNumTaskThreads());
 
+    // Up before the subsystems: they already request assets from their Initialize().
+    impl_->assets->Initialize();
+
     // Size is re-read every iteration: a subsystem may register others from its
     // Initialize(), those get initialized by this same loop.
     impl_->initialized = true;
@@ -134,6 +145,9 @@ void Engine::Shutdown() {
     while (impl_->initializedCount > 0) {
         impl_->subsystems[--impl_->initializedCount].subsystem->Shutdown();
     }
+    // After the subsystems (they may still read assets in their Shutdown()), before the
+    // scheduler goes away (in-flight loads have to be waited for).
+    impl_->assets->Shutdown();
     impl_->scheduler.WaitforAllAndShutdown();
     impl_->initialized = false;
 }
@@ -169,6 +183,8 @@ void Engine::Tick() {
 
     // Copy: a subsystem reacting to the frame must not see it change under it.
     const FrameContext current = frame;
+    // Finished background loads become usable before anything can ask for them this frame.
+    impl_->assets->Update(current);
     for (std::size_t i = 0; i < impl_->subsystems.size(); ++i) {
         impl_->subsystems[i].subsystem->Update(current);
     }
@@ -244,6 +260,10 @@ entt::dispatcher& Engine::GetEvents() noexcept {
 
 Scene& Engine::GetScene() noexcept {
     return impl_->scene;
+}
+
+AssetSystem& Engine::GetAssets() noexcept {
+    return *impl_->assets;
 }
 
 enki::TaskScheduler& Engine::GetTaskScheduler() noexcept {
