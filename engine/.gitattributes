@@ -1,0 +1,18 @@
+# Git LFS tracking for engine runtime data (engine/primitives, ...).
+#
+# Patterns below are relative to this directory (engine/). Requires
+# `git lfs install` once per machine, see example_game/.gitattributes.
+
+# --- Textures -------------------------------------------------------------
+*.png       filter=lfs diff=lfs merge=lfs -text
+*.jpg       filter=lfs diff=lfs merge=lfs -text
+*.jpeg      filter=lfs diff=lfs merge=lfs -text
+*.tga       filter=lfs diff=lfs merge=lfs -text
+*.dds       filter=lfs diff=lfs merge=lfs -text
+*.hdr       filter=lfs diff=lfs merge=lfs -text
+
+# --- Meshes ---------------------------------------------------------------
+# Built-in primitives are tiny hand-checkable text: plain Git. Big exported
+# meshes, if the engine ever ships any, would go under LFS with a scoped pattern
+# (a bare *.obj could also match MSVC object files in an in-source build).
+primitives/**/*.obj text eol=lf
