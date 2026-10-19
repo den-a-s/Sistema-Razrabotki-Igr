@@ -21,10 +21,12 @@
 #include <DockWidget.h>
 
 #include <engine/assets/AssetSystem.hpp>
+#include <engine/input/InputSubsystem.hpp>
 #include <engine/rendering/RenderComponents.hpp>
 #include <engine/rendering/RenderingSubsystem.hpp>
 #include <engine/rendering/SceneRenderSubsystem.hpp>
 
+#include <editor/editor_camera.hpp>
 #include <editor/editor_context.hpp>
 #include <editor/module_loader.hpp>
 #include <editor/viewport_widget.hpp>
@@ -90,6 +92,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), engine_(makeEngin
 
 MainWindow::~MainWindow() {
     tick_timer_->stop();
+    // The viewport outlives the engine (Qt deletes children after our members).
+    viewport_->setInput(nullptr);
     // First, so nothing logs into the Log panel once it is gone.
     std::erase(spdlog::default_logger()->sinks(), log_sink_);
     // Modules and panels go before the engine they use.
@@ -124,6 +128,10 @@ void MainWindow::startEngine() {
     // its initial buffer size and DXGI stretches it, so proportions stay right if blurrier.
     connect(viewport_, &ViewportWidget::surfaceResized, this,
             [this](quint32 width, quint32 height) { engine_.ResizeSurface(width, height); });
+    // Input first, so it's latched before anything reads it; the camera moves before
+    // SceneRenderSubsystem copies it into the RenderWorld.
+    viewport_->setInput(engine_.AddSubsystem<engine::InputSubsystem>());
+    engine_.AddSubsystem<EditorCameraSubsystem>();
     engine_.AddSubsystem<engine::RenderingSubsystem>();
     engine_.AddSubsystem<engine::SceneRenderSubsystem>();
 
@@ -143,7 +151,7 @@ void MainWindow::setupDefaultScene() {
     using DirectX::SimpleMath::Vector3;
     engine::Scene& scene = engine_.GetScene();
 
-    // Fixed camera looking down at the origin.
+    // Looking down at the origin; EditorCameraSubsystem flies it.
     const entt::entity camera = scene.CreateEntity("Camera");
     scene.GetTransform(camera).position = Vector3{0.0f, 4.0f, 9.0f};
     scene.GetTransform(camera).rotation = Quaternion::CreateFromYawPitchRoll(0.0f, -0.4f, 0.0f);
