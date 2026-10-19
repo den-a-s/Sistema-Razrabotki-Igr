@@ -37,10 +37,10 @@ EditorContext::EditorContext(engine::Engine& engine, QMainWindow& window, ads::C
 EditorContext::~EditorContext() {
     // Panels would otherwise die with the dock manager, after the engine they show.
     // Not deleteDockWidget(): that defers the delete past the engine's shutdown.
-    for (const QPointer<ads::CDockWidget>& panel : panels_) {
-        if (panel != nullptr) {
-            dock_manager_.removeDockWidget(panel);
-            delete panel;
+    for (const Panel& panel : panels_) {
+        if (panel.dock != nullptr) {
+            dock_manager_.removeDockWidget(panel.dock);
+            delete panel.dock;
         }
     }
 }
@@ -79,7 +79,16 @@ void EditorContext::addPanel(const QString& id, const QString& title, QWidget* w
     dock->setWidget(widget, ads::CDockWidget::ForceNoScrollArea);
     dock_manager_.addDockWidget(toAdsArea(area), dock);
     menu(QObject::tr("&View"))->addAction(dock->toggleViewAction());
-    panels_.emplace_back(dock);
+    panels_.push_back({dock, area});
+}
+
+void EditorContext::placeNewPanels() {
+    for (const Panel& panel : panels_) {
+        // Panels in the saved layout have an area even when closed; the unknown ones have none.
+        if (panel.dock != nullptr && panel.dock->dockAreaWidget() == nullptr) {
+            dock_manager_.addDockWidget(toAdsArea(panel.area), panel.dock);
+        }
+    }
 }
 
 }  // namespace editor

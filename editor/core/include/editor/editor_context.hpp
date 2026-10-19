@@ -50,12 +50,21 @@ public:
     /// it is the panel's objectName, which the saved layout refers to.
     void addPanel(const QString& id, const QString& title, QWidget* widget, Qt::DockWidgetArea area);
 
+    /// Call after restoring a saved layout: docks the panels it didn't know about (e.g. from
+    /// a newly added module) at their default area. ADS leaves those hidden and unplaced.
+    void placeNewPanels();
+
 private:
+    struct Panel {
+        QPointer<ads::CDockWidget> dock;
+        Qt::DockWidgetArea area;
+    };
+
     engine::Engine& engine_;
     QMainWindow& window_;
     ads::CDockManager& dock_manager_;
     QToolBar* tool_bar_ = nullptr;
-    std::vector<QPointer<ads::CDockWidget>> panels_;
+    std::vector<Panel> panels_;
 };
 
 }  // namespace editor

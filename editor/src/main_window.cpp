@@ -109,8 +109,8 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 }
 
 void MainWindow::restoreLayout() {
-    // Panels missing from the saved state keep their default place; saved panels whose
-    // module is gone are ignored.
+    // Saved panels whose module is gone are ignored; panels missing from the saved state
+    // are put back at their default place by placeNewPanels().
     // Nothing saved yet on the first run; ADS would complain about the empty state.
     const QSettings settings;
     if (settings.contains(GeometryKey)) {
@@ -118,6 +118,7 @@ void MainWindow::restoreLayout() {
     }
     if (settings.contains(DockStateKey)) {
         dock_manager_->restoreState(settings.value(DockStateKey).toByteArray(), LayoutVersion);
+        context_->placeNewPanels();
     }
 }
 
