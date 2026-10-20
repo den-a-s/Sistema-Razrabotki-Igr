@@ -11,11 +11,8 @@
 
 namespace engine {
 
-void PresentPass::Initialize(RenderingResourceManager& resourceManager, RenderingContext& context,
-                             RenderingResources&) {
-    vertexShader_ = resourceManager.CompileShader(L"PresentPass.hlsl", ShaderType::Vertex);
-    pixelShader_ = resourceManager.CompileShader(L"PresentPass.hlsl", ShaderType::Pixel);
-
+namespace {
+TextureHandle CreateBackbufferTexture(RenderingResourceManager& resourceManager, RenderingContext& context) {
     //todo: this generally doesnt have to be here
     ComPtr<ID3D11Texture2D> backBuffer;
     HRESULT result = context.GetSwapChain()->GetBuffer(0, IID_PPV_ARGS(backBuffer.GetAddressOf()));
@@ -30,7 +27,24 @@ void PresentPass::Initialize(RenderingResourceManager& resourceManager, Renderin
         std::exit(-1); //todo error handling
     }
     Texture backBufferTexture(std::move(backBufferView));
-    backBufferView_ = resourceManager.RegisterTexture(std::move(backBufferTexture));
+    return resourceManager.RegisterTexture(std::move(backBufferTexture));
+}
+
+}
+
+void PresentPass::Initialize(RenderingResourceManager& resourceManager, RenderingContext& context,
+                             RenderingResources&) {
+    vertexShader_ = resourceManager.CompileShader(L"PresentPass.hlsl", ShaderType::Vertex);
+    pixelShader_ = resourceManager.CompileShader(L"PresentPass.hlsl", ShaderType::Pixel);
+
+    backBufferView_ = CreateBackbufferTexture(resourceManager, context);
+}
+
+void PresentPass::Destroy(RenderingResourceManager& resourceManager, RenderingContext& context,
+    RenderingResources& resources) {
+    resourceManager.DestroyShader(vertexShader_);
+    resourceManager.DestroyShader(pixelShader_);
+    resourceManager.DestroyTexture(backBufferView_);
 }
 
 void PresentPass::Render(RenderWorld&, RenderingContext& context, RenderingResources& resources) {
@@ -44,6 +58,18 @@ void PresentPass::Render(RenderWorld&, RenderingContext& context, RenderingResou
     context.SetShaderResources(BindSlots::Texture::SceneResult, resources.gBuffer.resultTexture);
     context.RawDraw(6, 0);
     context.Present();
+}
+
+bool PresentPass::PreReinitialize(RenderingResourceManager& resourceManager, RenderingContext& context,
+                                  RenderingResources& resources) {
+    resourceManager.DestroyTexture(backBufferView_);
+    return true;
+}
+
+bool PresentPass::Reinitialize(RenderingResourceManager& resourceManager, RenderingContext& context,
+                               RenderingResources& resources) {
+    backBufferView_ = CreateBackbufferTexture(resourceManager, context);
+    return true;
 }
 
 }

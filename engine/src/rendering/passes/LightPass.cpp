@@ -30,6 +30,14 @@ void LightPass::Initialize(RenderingResourceManager& resourceManager, RenderingC
     lightSphere_ = ugly_utils::FromRawMesh(resourceManager, ugly_utils::CreateSphere(1.0f));
 }
 
+void LightPass::Destroy(RenderingResourceManager& resourceManager, RenderingContext& context,
+    RenderingResources& resources) {
+    resourceManager.DestroyShader(vertexShader_);
+    resourceManager.DestroyShader(pixelShader_);
+    resourceManager.DestroyShader(dirLightVertexShader_);
+    resourceManager.DestroyMesh(lightSphere_);
+}
+
 void LightPass::Render(RenderWorld& world, RenderingContext& context, RenderingResources& resources) {
     auto& gBuffer = resources.gBuffer;
     context.SetViewport(resources.screenWith, resources.screenHeight);

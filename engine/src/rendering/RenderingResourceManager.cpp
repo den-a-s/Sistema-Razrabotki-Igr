@@ -57,11 +57,16 @@ TextureHandle RenderingResourceManager::RegisterTexture(Texture&& texture) {
     return textures_.Add(std::move(texture));
 }
 
+
 MeshHandle RenderingResourceManager::CreateMesh(const BufferHandle vertexBuffer, const BufferHandle indexBuffer,
                                                 VertexLayout&& layout, const uint32_t vertexCount) {
     auto layoutHandle = inputLayoutCache_.RegisterMeshLayout(std::move(layout));
     RenderedMesh mesh{vertexBuffer, indexBuffer, std::move(layoutHandle), vertexCount};
     return meshes_.Add(std::move(mesh));
+}
+
+bool RenderingResourceManager::DestroyMesh(const MeshHandle meshHandle) {
+    return meshes_.Remove(meshHandle);
 }
 
 ShaderHandle RenderingResourceManager::CompileShader(const std::wstring& fileName, const ShaderType shaderType) {
@@ -81,6 +86,10 @@ ShaderHandle RenderingResourceManager::RegisterCompiledShader(const CompiledShad
         return ShaderHandle{};
     }
     return shaders_.Add(std::move(*shader));
+}
+
+bool RenderingResourceManager::DestroyShader(const ShaderHandle shaderHandle) {
+    return shaders_.Remove(shaderHandle);
 }
 
 BufferHandle RenderingResourceManager::CreateBuffer(const BufferDesc& desc, const void* initialData) {
@@ -133,6 +142,10 @@ BufferHandle RenderingResourceManager::CreateBuffer(const BufferDesc& desc, cons
 
     checkResult(res, "CreateBuffer");
     return buffers_.Add(std::move(result));
+}
+
+bool RenderingResourceManager::DestroyBuffer(const BufferHandle bufferHandle) {
+    return buffers_.Remove(bufferHandle);
 }
 
 void RenderingResourceManager::checkResult(const HRESULT result, const char* message) {

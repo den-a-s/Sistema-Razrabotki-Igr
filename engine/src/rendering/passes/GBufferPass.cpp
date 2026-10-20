@@ -4,11 +4,8 @@
 
 namespace engine {
 
-void GBufferPass::Initialize(RenderingResourceManager& resourceManager, RenderingContext&,
-                             RenderingResources& resources) {
-    vertexShader_ = resourceManager.CompileShader(L"GBufferPass.hlsl", ShaderType::Vertex);
-    pixelShader_ = resourceManager.CompileShader(L"GBufferPass.hlsl", ShaderType::Pixel);
-
+namespace {
+void CreateGBuffer(RenderingResourceManager& resourceManager, RenderingResources& resources) {
     const auto textureDesc = [&](const DXGI_FORMAT format){
         return TextureDesc{
             .width = resources.screenWith, .height = resources.screenHeight,
@@ -18,7 +15,7 @@ void GBufferPass::Initialize(RenderingResourceManager& resourceManager, Renderin
             .dsvFormat = format,
         };
     };
-    auto & gBuffer = resources.gBuffer;
+    auto& gBuffer = resources.gBuffer;
     gBuffer.albedoTexture = resourceManager.CreateTexture(textureDesc(DXGI_FORMAT_R8G8B8A8_UNORM));
     gBuffer.normalTexture = resourceManager.CreateTexture(textureDesc(DXGI_FORMAT_R16G16B16A16_FLOAT));
     gBuffer.materialTexture = resourceManager.CreateTexture(textureDesc(DXGI_FORMAT_R8G8B8A8_UNORM));
@@ -28,12 +25,38 @@ void GBufferPass::Initialize(RenderingResourceManager& resourceManager, Renderin
     desc.dsvFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
     desc.srvFormat = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
     gBuffer.depthTexture = resourceManager.CreateTexture(desc);
+}
+
+void DestroyGBuffer(RenderingResourceManager& resourceManager, RenderingResources& resources) {
+    auto& gBuffer = resources.gBuffer;
+    resourceManager.DestroyTexture(gBuffer.albedoTexture);
+    resourceManager.DestroyTexture(gBuffer.normalTexture);
+    resourceManager.DestroyTexture(gBuffer.materialTexture);
+    resourceManager.DestroyTexture(gBuffer.resultTexture);
+    resourceManager.DestroyTexture(gBuffer.depthTexture);
+}
+}
+
+void GBufferPass::Initialize(RenderingResourceManager& resourceManager, RenderingContext&,
+                             RenderingResources& resources) {
+    vertexShader_ = resourceManager.CompileShader(L"GBufferPass.hlsl", ShaderType::Vertex);
+    pixelShader_ = resourceManager.CompileShader(L"GBufferPass.hlsl", ShaderType::Pixel);
+
+    CreateGBuffer(resourceManager, resources);
 
     lightSphere_ = ugly_utils::FromRawMesh(resourceManager, ugly_utils::CreateSphere(1.0f));
 }
 
+void GBufferPass::Destroy(RenderingResourceManager& resourceManager, RenderingContext& context,
+    RenderingResources& resources) {
+    resourceManager.DestroyShader(vertexShader_);
+    resourceManager.DestroyShader(pixelShader_);
+    DestroyGBuffer(resourceManager, resources);
+    resourceManager.DestroyMesh(lightSphere_);
+}
+
 void GBufferPass::Render(RenderWorld& world, RenderingContext& context, RenderingResources& resources) {
-    auto & gBuffer = resources.gBuffer;
+    auto& gBuffer = resources.gBuffer;
     context.SetViewport(resources.screenWith, resources.screenHeight);
     context.SetRasterizerState(RasterizerState::CullBack);
     context.ClearRenderTargetView(gBuffer.albedoTexture);
@@ -49,14 +72,14 @@ void GBufferPass::Render(RenderWorld& world, RenderingContext& context, Renderin
     world.BindCameraView(context, resources);
 
     //todo: generalize with other passes
-    for (const auto & ri : world.renderItems) {
-        resources.materialCBuffer.Update(context, [&](MaterialBufferData & data){
+    for (const auto& ri : world.renderItems) {
+        resources.materialCBuffer.Update(context, [&](MaterialBufferData& data){
             data.specularColor = ri.material.specularColor;
             data.shininess = ri.material.shininess;
             data.specialType = ri.material.specialType;
         });
 
-        resources.objectCBuffer.Update(context, [&](ObjectBufferData & data){
+        resources.objectCBuffer.Update(context, [&](ObjectBufferData& data){
             data.worldMatrix = ri.worldMatrix;
             data.normalMatrix = ri.worldMatrix.Invert().Transpose();
         });
@@ -65,34 +88,19 @@ void GBufferPass::Render(RenderWorld& world, RenderingContext& context, Renderin
 
         context.DrawMesh(ri.mesh);
     }
+}
 
-    //debug code
-    for (const auto & light : world.lights) {
-        Matrix lightWorldMatrix;
-        if (light.type == LightInfo::Spot) {
-            Vector3 direction = light.direction;
-            direction.Normalize();
-            const Vector3 up = std::abs(direction.Dot(Vector3::Up)) > 0.99f
-                                   ? Vector3::Right
-                                   : Vector3::Up;
-            const Vector3 boxCenter = light.position + direction * (light.range * 0.5f);
-            lightWorldMatrix = Matrix::CreateWorld(boxCenter, direction, up);
-        } else {
-            lightWorldMatrix = Matrix::CreateScale(light.range) * Matrix::CreateTranslation(light.position);
-        }
-        resources.objectCBuffer.Update(context, [&](ObjectBufferData & data){
-            data.worldMatrix = lightWorldMatrix;
-            data.normalMatrix = lightWorldMatrix.Invert().Transpose();
-        });
-        continue;
-        if (light.type == LightInfo::Point) {
+bool GBufferPass::PreReinitialize(RenderingResourceManager& resourceManager, RenderingContext&,
+                                  RenderingResources& resources) {
+    DestroyGBuffer(resourceManager, resources);
+    return true;
+}
 
-            context.DrawMesh(lightSphere_);
-        } else if (light.type == LightInfo::Spot) {
-            const auto bb = light.lightParameters.spotLight.boundingBox;
-            context.DrawMesh(bb);
-        }
-    }
+bool GBufferPass::Reinitialize(RenderingResourceManager& resourceManager, RenderingContext&, RenderingResources& resources) {
+    CreateGBuffer(resourceManager, resources);
+    return true;
 }
 
 }
+
+

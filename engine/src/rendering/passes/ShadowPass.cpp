@@ -131,6 +131,13 @@ void ShadowCSMPass::Initialize(RenderingResourceManager& resourceManager, Render
     resources.shadowTexture = resourceManager.CreateTexture(shadowTextureDesc);
 }
 
+void ShadowCSMPass::Destroy(RenderingResourceManager& resourceManager, RenderingContext& context,
+    RenderingResources& resources) {
+    resourceManager.DestroyShader(vertexShader_);
+    resourceManager.DestroyShader(geometryShader_);
+    resourceManager.DestroyTexture(resources.shadowTexture);
+}
+
 void ShadowCSMPass::Render(RenderWorld& world, RenderingContext& context, RenderingResources& resources) {
     context.SetViewport(mapSize, mapSize);
     context.SetRasterizerState(RasterizerState::CullBackWithBias);

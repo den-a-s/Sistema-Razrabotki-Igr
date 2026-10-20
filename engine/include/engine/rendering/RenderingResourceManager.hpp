@@ -20,12 +20,16 @@ struct ENGINE_API RenderingResourceManager {
     TextureHandle CreateTexture(const TextureDesc& desc,
                                 std::span<const D3D11_SUBRESOURCE_DATA> data = {});
     TextureHandle RegisterTexture(Texture&& texture);
+    bool DestroyTexture(TextureHandle texture);
     MeshHandle CreateMesh(BufferHandle vertexBuffer, BufferHandle indexBuffer, VertexLayout&& layout,
                           uint32_t vertexCount);
+    bool DestroyMesh(MeshHandle meshHandle);
     ShaderHandle CompileShader(const std::wstring& fileName, ShaderType shaderType);
     /// Uploads a CPU-compiled shader to the device and registers it; main thread only.
     /// Empty handle when the device refused the bytecode.
     ShaderHandle RegisterCompiledShader(const CompiledShader& compiled);
+    bool DestroyShader(ShaderHandle shaderHandle);
+    
     [[nodiscard]] BufferHandle CreateBuffer(const BufferDesc& desc, const void* initialData);
 
     template <typename T>
@@ -65,6 +69,8 @@ struct ENGINE_API RenderingResourceManager {
                 .size = size
             }, nullptr);
     }
+    
+    bool DestroyBuffer(BufferHandle bufferHandle);
 
     friend RenderingContext;
     friend ShaderContext;

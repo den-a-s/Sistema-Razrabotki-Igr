@@ -18,12 +18,6 @@ RenderingContext::~RenderingContext() {
     }
 }
 
-void RenderingContext::Initialize(const uint32_t screenWidth, const uint32_t screenHeight) {
-    if (!CreateDeviceAndSwapChain(makeWindow(screenWidth, screenHeight), screenWidth, screenHeight)) {
-        spdlog::critical("RenderingContext: no device, the process cannot continue");
-        std::exit(1);
-    }
-}
 
 bool RenderingContext::Initialize(const NativeSurface& surface) {
     if (!surface.IsValid()) {
@@ -32,6 +26,16 @@ bool RenderingContext::Initialize(const NativeSurface& surface) {
     }
     return CreateDeviceAndSwapChain(static_cast<HWND>(surface.windowHandle), surface.width, surface.height);
 }
+
+bool RenderingContext::Reinitialize(const NativeSurface& surface) const {
+    auto r = swapChain_->ResizeBuffers(0, surface.width, surface.height, DXGI_FORMAT_UNKNOWN, 0);
+    if (FAILED(r)) {
+        spdlog::error("Failed to resize swap chain");
+        return false;
+    }
+    return true;
+}
+
 
 bool RenderingContext::CreateDeviceAndSwapChain(const HWND hwnd, const uint32_t width, const uint32_t height) {
     const DXGI_SWAP_CHAIN_DESC swapChainDesc{

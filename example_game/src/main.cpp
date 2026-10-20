@@ -188,7 +188,8 @@ void UpdateLights(engine::RenderWorld& world, float time) {
 /// arrive through the AssetSystem in the background.
 class ExampleGameLogic final : public engine::Subsystem {
 public:
-    explicit ExampleGameLogic(HWND window) : window_(window) {}
+    explicit ExampleGameLogic(HWND window) : window_(window) {
+    }
 
     [[nodiscard]] std::string_view GetName() const override {
         return "ExampleGameLogic";
@@ -250,12 +251,14 @@ public:
                 .intensity = 7.0f,
                 .range = 10.0f,
                 .type = engine::LightInfo::Spot,
-                .lightParameters = {.spotLight = {
-                    .innerAngle = std::cos(Pi / 12.0f),
-                    .outerAngle = std::cos(firstSpotOuterHalfAngle),
-                    .range = 10.0f,
-                    .boundingBox = firstSpotBoundingBox
-                }}
+                .lightParameters = {
+                    .spotLight = {
+                        .innerAngle = std::cos(Pi / 12.0f),
+                        .outerAngle = std::cos(firstSpotOuterHalfAngle),
+                        .range = 10.0f,
+                        .boundingBox = firstSpotBoundingBox
+                    }
+                }
             },
             {
                 .position = Vector3{5.0f, 4.5f, 0.0f},
@@ -264,12 +267,14 @@ public:
                 .intensity = 6.0f,
                 .range = 8.0f,
                 .type = engine::LightInfo::Spot,
-                .lightParameters = {.spotLight = {
-                    .innerAngle = std::cos(Pi / 10.0f),
-                    .outerAngle = std::cos(secondSpotOuterHalfAngle),
-                    .range = 8.0f,
-                    .boundingBox = secondSpotBoundingBox
-                }}
+                .lightParameters = {
+                    .spotLight = {
+                        .innerAngle = std::cos(Pi / 10.0f),
+                        .outerAngle = std::cos(secondSpotOuterHalfAngle),
+                        .range = 8.0f,
+                        .boundingBox = secondSpotBoundingBox
+                    }
+                }
             }
         };
 
@@ -326,7 +331,7 @@ public:
             objects_[orbitingSign_].transform = Matrix::CreateScale(1.5f) *
                 Matrix::CreateRotationY(-time * 1.2f) *
                 Matrix::CreateTranslation(std::cos(time) * 5.0f, 1.25f,
-                                         std::sin(time) * 5.0f);
+                                          std::sin(time) * 5.0f);
             objects_[bobbingHammer_].transform = Matrix::CreateScale(1.4f) *
                 Matrix::CreateRotationX(time * 1.8f) *
                 Matrix::CreateRotationY(time * 0.9f) *
@@ -371,7 +376,7 @@ private:
         table.material.shininess = 64.0f;
         SceneObject sign{
             .transform = Matrix::CreateScale(3.0f) * Matrix::CreateRotationY(-0.35f) *
-                Matrix::CreateTranslation(2.5f, 1.5f, -1.0f),
+            Matrix::CreateTranslation(2.5f, 1.5f, -1.0f),
             .mesh = signMesh->mesh,
             .texture = signTexture->texture,
             .material = objectMaterial
@@ -379,7 +384,7 @@ private:
         sign.material.shininess = 32.0f;
         SceneObject hammer{
             .transform = Matrix::CreateScale(2.0f) * Matrix::CreateRotationZ(-0.65f) *
-                Matrix::CreateTranslation(0.0f, 1.0f, 1.5f),
+            Matrix::CreateTranslation(0.0f, 1.0f, 1.5f),
             .mesh = hammerMesh->mesh,
             .texture = hammerTexture->texture,
             .material = objectMaterial
@@ -431,8 +436,18 @@ private:
     size_t firstLightMarker_ = 0;
 };
 
+
 int main(int /*argumentCount*/, char** /*arguments*/) {
-    HWND window = engine::makeWindow(ScreenWidth, ScreenHeight);
+    static engine::Engine* enginePtr;
+
+    engine::WindowResizedCallback* windowCallback = [](int newWidth, int newHeight){
+        if (enginePtr) {
+            enginePtr->ResizeSurface(newWidth, newHeight);
+        }
+    };
+
+    HWND window = engine::makeWindow(ScreenWidth, ScreenHeight, windowCallback);
+
 
     engine::EngineConfig config;
     config.applicationName = "ExampleGame";
@@ -441,6 +456,7 @@ int main(int /*argumentCount*/, char** /*arguments*/) {
     engine::Engine engine{config};
     engine.AddSubsystem<engine::RenderingSubsystem>();
     engine.AddSubsystem<ExampleGameLogic>(window);
+    enginePtr = &engine;
     const bool ran = engine.Run();
 
     ReleaseCapture();

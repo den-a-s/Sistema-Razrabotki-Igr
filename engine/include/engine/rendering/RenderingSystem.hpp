@@ -16,11 +16,12 @@
 namespace engine {
 
 struct ENGINE_API RenderingSystem {
-    /// Legacy standalone path: the renderer creates the window itself.
-    void Initialize(uint32_t screenWidth, uint32_t screenHeight);
     /// Renders into a host-owned window; false when the device could not be created.
     bool Initialize(const NativeSurface& surface);
+    /// Re-inits all screen size dependant resource and sets new screen size (We hope that HWND doesn't change during game run)
+    bool Reinitialize(const NativeSurface& surface);
     void RenderFrame();
+    ~RenderingSystem();
 
     [[nodiscard]] RenderingContext& GetRenderingContext();
     [[nodiscard]] RenderingResourceManager& GetResourceManager();
