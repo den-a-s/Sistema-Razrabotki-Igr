@@ -68,8 +68,21 @@ MeshHandle RenderingResourceManager::CreateMesh(const BufferHandle vertexBuffer,
     return meshes_.Add(std::move(mesh));
 }
 
-bool RenderingResourceManager::DestroyMesh(const MeshHandle meshHandle) {
-    return meshes_.Remove(meshHandle);
+bool RenderingResourceManager::DestroyMesh(const MeshHandle meshHandle, const bool destroyBuffers) {
+    const auto* mesh = meshes_.TryGet(meshHandle);
+    if (!mesh) {
+        return false;
+    }
+    const BufferHandle vertexBuffer = mesh->vertexBuffer;
+    const BufferHandle indexBuffer = mesh->indexBuffer;
+    meshes_.Remove(meshHandle);
+    if (destroyBuffers) {
+        DestroyBuffer(vertexBuffer);
+        if (indexBuffer != vertexBuffer) {
+            DestroyBuffer(indexBuffer);
+        }
+    }
+    return true;
 }
 
 ShaderHandle RenderingResourceManager::CompileShader(const std::wstring& fileName, const ShaderType shaderType) {

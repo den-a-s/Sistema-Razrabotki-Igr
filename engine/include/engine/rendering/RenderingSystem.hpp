@@ -34,6 +34,7 @@ private:
     RenderWorld world_{};
     std::unique_ptr<RenderingResources> resources_;
     std::vector<std::unique_ptr<RenderPass>> renderPasses_{};
+    bool ready_ = false;
 };
 
 }

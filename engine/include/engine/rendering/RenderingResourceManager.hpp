@@ -23,7 +23,8 @@ struct ENGINE_API RenderingResourceManager {
     bool DestroyTexture(TextureHandle texture);
     MeshHandle CreateMesh(BufferHandle vertexBuffer, BufferHandle indexBuffer, VertexLayout&& layout,
                           uint32_t vertexCount);
-    bool DestroyMesh(MeshHandle meshHandle);
+    /// Meshes own their vertex and index buffers by default. Pass false if the buffers are shared.
+    bool DestroyMesh(MeshHandle meshHandle, bool destroyBuffers = true);
     ShaderHandle CompileShader(const std::wstring& fileName, ShaderType shaderType);
     /// Uploads a CPU-compiled shader to the device and registers it; main thread only.
     /// Empty handle when the device refused the bytecode.

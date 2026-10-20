@@ -18,13 +18,13 @@ TextureHandle CreateBackbufferTexture(RenderingResourceManager& resourceManager,
     HRESULT result = context.GetSwapChain()->GetBuffer(0, IID_PPV_ARGS(backBuffer.GetAddressOf()));
     if (FAILED(result)) {
         spdlog::error("Failed to get the back-buffer render target");
-        std::exit(-1); //todo error handling
+        return {};
     }
     ComPtr<ID3D11RenderTargetView> backBufferView;
     result = context.GetDevice()->CreateRenderTargetView(backBuffer.Get(), nullptr, backBufferView.GetAddressOf());
     if (FAILED(result)) {
         spdlog::error("Failed to create the back-buffer render target");
-        std::exit(-1); //todo error handling
+        return {};
     }
     Texture backBufferTexture(std::move(backBufferView));
     return resourceManager.RegisterTexture(std::move(backBufferTexture));
@@ -38,13 +38,19 @@ void PresentPass::Initialize(RenderingResourceManager& resourceManager, Renderin
     pixelShader_ = resourceManager.CompileShader(L"PresentPass.hlsl", ShaderType::Pixel);
 
     backBufferView_ = CreateBackbufferTexture(resourceManager, context);
+    if (!backBufferView_) {
+        std::exit(-1); //todo initialization error handling
+    }
 }
 
 void PresentPass::Destroy(RenderingResourceManager& resourceManager, RenderingContext& context,
     RenderingResources& resources) {
     resourceManager.DestroyShader(vertexShader_);
     resourceManager.DestroyShader(pixelShader_);
-    resourceManager.DestroyTexture(backBufferView_);
+    if (backBufferView_) {
+        resourceManager.DestroyTexture(backBufferView_);
+        backBufferView_ = {};
+    }
 }
 
 void PresentPass::Render(RenderWorld&, RenderingContext& context, RenderingResources& resources) {
@@ -62,14 +68,17 @@ void PresentPass::Render(RenderWorld&, RenderingContext& context, RenderingResou
 
 bool PresentPass::PreReinitialize(RenderingResourceManager& resourceManager, RenderingContext& context,
                                   RenderingResources& resources) {
-    resourceManager.DestroyTexture(backBufferView_);
+    if (backBufferView_) {
+        resourceManager.DestroyTexture(backBufferView_);
+        backBufferView_ = {};
+    }
     return true;
 }
 
 bool PresentPass::Reinitialize(RenderingResourceManager& resourceManager, RenderingContext& context,
                                RenderingResources& resources) {
     backBufferView_ = CreateBackbufferTexture(resourceManager, context);
-    return true;
+    return static_cast<bool>(backBufferView_);
 }
 
 }

@@ -28,9 +28,12 @@ bool RenderingContext::Initialize(const NativeSurface& surface) {
 }
 
 bool RenderingContext::Reinitialize(const NativeSurface& surface) const {
-    auto r = swapChain_->ResizeBuffers(0, surface.width, surface.height, DXGI_FORMAT_UNKNOWN, 0);
+    if (!swapChain_ || !surface.IsValid()) {
+        return false;
+    }
+    const auto r = swapChain_->ResizeBuffers(0, surface.width, surface.height, DXGI_FORMAT_UNKNOWN, 0);
     if (FAILED(r)) {
-        spdlog::error("Failed to resize swap chain");
+        spdlog::error("Failed to resize swap chain: {:08x}", static_cast<unsigned long>(r));
         return false;
     }
     return true;

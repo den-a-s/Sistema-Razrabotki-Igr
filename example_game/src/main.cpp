@@ -321,6 +321,10 @@ public:
         }
 
         auto& world = rendering_->GetWorld();
+        const auto& surface = GetEngine().GetSurface();
+        if (surface.width > 0 && surface.height > 0) {
+            world.camera.aspectRatio = static_cast<float>(surface.width) / static_cast<float>(surface.height);
+        }
         UpdateCamera(world.camera, window_, static_cast<float>(frame.deltaSeconds));
         if (!sceneBuilt_) {
             TryBuildScene();

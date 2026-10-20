@@ -21,10 +21,30 @@ bool RenderingSubsystem::Initialize() {
                       surface_.width, surface_.height);
         return false;
     }
+    GetEngine().GetEvents().sink<SurfaceChangedEvent>().connect<&RenderingSubsystem::OnSurfaceChanged>(*this);
     return true;
 }
 
+void RenderingSubsystem::Shutdown() {
+    GetEngine().GetEvents().sink<SurfaceChangedEvent>().disconnect<&RenderingSubsystem::OnSurfaceChanged>(*this);
+}
+
+void RenderingSubsystem::OnSurfaceChanged(const SurfaceChangedEvent& event) {
+    surface_ = event.surface;
+    resizePending_ = true;
+}
+
 void RenderingSubsystem::Render(const FrameContext&) {
+    // A minimized window has no drawable area. Keep the pending resize for restoration.
+    if (!surface_.IsValid()) {
+        return;
+    }
+    if (resizePending_) {
+        if (!renderer_.Reinitialize(surface_)) {
+            return; // retry next frame; never draw with missing or mismatched resources
+        }
+        resizePending_ = false;
+    }
     renderer_.RenderFrame();
 }
 

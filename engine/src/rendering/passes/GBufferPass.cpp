@@ -34,6 +34,7 @@ void DestroyGBuffer(RenderingResourceManager& resourceManager, RenderingResource
     resourceManager.DestroyTexture(gBuffer.materialTexture);
     resourceManager.DestroyTexture(gBuffer.resultTexture);
     resourceManager.DestroyTexture(gBuffer.depthTexture);
+    gBuffer = {};
 }
 }
 
@@ -90,13 +91,8 @@ void GBufferPass::Render(RenderWorld& world, RenderingContext& context, Renderin
     }
 }
 
-bool GBufferPass::PreReinitialize(RenderingResourceManager& resourceManager, RenderingContext&,
-                                  RenderingResources& resources) {
-    DestroyGBuffer(resourceManager, resources);
-    return true;
-}
-
 bool GBufferPass::Reinitialize(RenderingResourceManager& resourceManager, RenderingContext&, RenderingResources& resources) {
+    DestroyGBuffer(resourceManager, resources);
     CreateGBuffer(resourceManager, resources);
     return true;
 }

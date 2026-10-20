@@ -8,21 +8,45 @@ bool RenderingSystem::Initialize(const NativeSurface& surface) {
         return false;
     }
     InitializePasses(surface.width, surface.height);
+    ready_ = true;
     return true;
 }
 
 bool RenderingSystem::Reinitialize(const NativeSurface& surface) {
-    auto& resourceManager = renderingContext_.GetResourceManager();
-    for (const auto& renderPass : renderPasses_) {
-        renderPass->PreReinitialize(resourceManager, renderingContext_, *resources_);
-    }
-    if (!renderingContext_.Reinitialize(surface)) {
-        spdlog::error("Reinitialization failed, pass resources will not be initialized properly!");
+    if (!resources_ || !surface.IsValid()) {
         return false;
     }
+    ready_ = false;
+    // D3D11 bindings hold references even after the pass releases its back-buffer view.
+    renderingContext_.ClearState();
+    auto& resourceManager = renderingContext_.GetResourceManager();
     for (const auto& renderPass : renderPasses_) {
-        renderPass->Reinitialize(resourceManager, renderingContext_, *resources_);
+        if (!renderPass->PreReinitialize(resourceManager, renderingContext_, *resources_)) {
+            spdlog::error("Rendering pass failed to release resources before resize");
+            return false;
+        }
     }
+    // ClearState drops bindings; Flush ensures their deferred references are released too.
+    renderingContext_.GetDeviceContext()->Flush();
+    if (!renderingContext_.Reinitialize(surface)) {
+        // ResizeBuffers leaves the old swap chain intact on failure. Restore its view so
+        // the next resize attempt can release it again and retry cleanly.
+        for (const auto& renderPass : renderPasses_) {
+            if (!renderPass->Reinitialize(resourceManager, renderingContext_, *resources_)) {
+                spdlog::error("Failed to restore pass resources after resize failure");
+            }
+        }
+        return false;
+    }
+    resources_->screenWith = surface.width;
+    resources_->screenHeight = surface.height;
+    for (const auto& renderPass : renderPasses_) {
+        if (!renderPass->Reinitialize(resourceManager, renderingContext_, *resources_)) {
+            spdlog::error("Rendering pass failed to recreate resources after resize");
+            return false;
+        }
+    }
+    ready_ = true;
     return true;
 }
 
@@ -40,6 +64,9 @@ void RenderingSystem::InitializePasses(const uint32_t screenWidth, const uint32_
 }
 
 void RenderingSystem::RenderFrame() {
+    if (!ready_) {
+        return;
+    }
     renderingContext_.ClearState();
     resources_->BindCBuffers(renderingContext_);
     renderingContext_.BindSamplers();
@@ -51,6 +78,10 @@ void RenderingSystem::RenderFrame() {
 }
 
 RenderingSystem::~RenderingSystem() {
+    if (!resources_) {
+        return;
+    }
+    renderingContext_.ClearState();
     for (const auto& renderPass : renderPasses_) {
         renderPass->Destroy(renderingContext_.GetResourceManager(), renderingContext_, *resources_);
     }

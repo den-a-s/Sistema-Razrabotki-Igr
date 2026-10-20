@@ -21,10 +21,15 @@ HWND makeWindow(const std::uint32_t screenWidth, const uint32_t screenHeight, Wi
         } else if (message == WM_SIZE) {
             newWidth = LOWORD(lparam);
             newHeight = HIWORD(lparam);
+            if (!isResizing && callback) {
+                callback(newWidth, newHeight);
+            }
         } else if (message == WM_EXITSIZEMOVE) {
-            if (isResizing && newWidth > 0 && newHeight > 0) {
+            if (isResizing) {
                 isResizing = false;
-                callback(newWidth, newHeight);  
+                if (callback) {
+                    callback(newWidth, newHeight);
+                }
             }
         }
         return DefWindowProc(hwnd, message, wparam, lparam);
