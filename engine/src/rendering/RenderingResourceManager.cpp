@@ -57,6 +57,9 @@ TextureHandle RenderingResourceManager::RegisterTexture(Texture&& texture) {
     return textures_.Add(std::move(texture));
 }
 
+bool RenderingResourceManager::DestroyTexture(const TextureHandle texture) {
+    return textures_.Remove(texture);
+}
 
 MeshHandle RenderingResourceManager::CreateMesh(const BufferHandle vertexBuffer, const BufferHandle indexBuffer,
                                                 VertexLayout&& layout, const uint32_t vertexCount) {

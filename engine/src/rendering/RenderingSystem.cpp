@@ -1,17 +1,28 @@
 ﻿#include <engine/rendering/RenderingSystem.hpp>
+#include <spdlog/spdlog.h>
 
 namespace engine {
-
-void RenderingSystem::Initialize(const uint32_t screenWidth, const uint32_t screenHeight) {
-    renderingContext_.Initialize(screenWidth, screenHeight);
-    InitializePasses(screenWidth, screenHeight);
-}
 
 bool RenderingSystem::Initialize(const NativeSurface& surface) {
     if (!renderingContext_.Initialize(surface)) {
         return false;
     }
     InitializePasses(surface.width, surface.height);
+    return true;
+}
+
+bool RenderingSystem::Reinitialize(const NativeSurface& surface) {
+    auto& resourceManager = renderingContext_.GetResourceManager();
+    for (const auto& renderPass : renderPasses_) {
+        renderPass->PreReinitialize(resourceManager, renderingContext_, *resources_);
+    }
+    if (!renderingContext_.Reinitialize(surface)) {
+        spdlog::error("Reinitialization failed, pass resources will not be initialized properly!");
+        return false;
+    }
+    for (const auto& renderPass : renderPasses_) {
+        renderPass->Reinitialize(resourceManager, renderingContext_, *resources_);
+    }
     return true;
 }
 
@@ -38,6 +49,13 @@ void RenderingSystem::RenderFrame() {
         renderingContext_.ClearHazardousState();
     }
 }
+
+RenderingSystem::~RenderingSystem() {
+    for (const auto& renderPass : renderPasses_) {
+        renderPass->Destroy(renderingContext_.GetResourceManager(), renderingContext_, *resources_);
+    }
+}
+
 
 RenderingContext& RenderingSystem::GetRenderingContext() {
     return renderingContext_;
