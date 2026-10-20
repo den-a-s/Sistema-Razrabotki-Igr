@@ -48,13 +48,11 @@ struct HandleMap {
             std::construct_at(&slot.val.value, std::move(t));
             slot.generation = generation;
             freeSlots_.pop_back();
-            size_++;
             return Handle{id, generation};
         }
 
         const uint32_t id = static_cast<uint32_t>(storage_.size());
         storage_.emplace_back(std::move(t));
-        size_++;
         return Handle{id, 0};
     }
 
@@ -82,7 +80,7 @@ struct HandleMap {
     }
 
     [[nodiscard]] std::size_t Size() const noexcept {
-        return storage_.size();
+        return storage_.size() - freeSlots_.size();
     }
     
     bool Remove(Handle h) {
@@ -101,14 +99,13 @@ struct HandleMap {
         } else {
             slot.generation = -generation - 2;
         }
-
-        size_--;
+        
         return true;
     }
 
     std::optional<Handle> Find(const T& t) {
         auto res = std::find_if(storage_.begin(), storage_.end(), [&](const Slot & slot) -> bool{
-            return slot.generation > 0 && slot.val.value == t;
+            return slot.Used() && slot.val.value == t;
         });
         if (res != storage_.end()) {
             return Handle(static_cast<uint32_t>(std::distance(storage_.begin(), res)), res->generation);
@@ -160,7 +157,6 @@ private:
 
     std::vector<Slot> storage_{};
     std::vector<uint32_t> freeSlots_;
-    std::size_t size_ = 0;
 };
 
 }
