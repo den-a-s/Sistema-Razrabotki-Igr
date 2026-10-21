@@ -84,7 +84,10 @@ void LightPass::Render(RenderWorld& world, RenderingContext& context, RenderingR
             context.DrawMesh(bb);
         }
     }
-    // context.SetRenderTargets({gBuffer.resultTexture}, TextureHandle{});
+    // The directional light covers the entire screen; its shader reads scene depth
+    // directly and must not be clipped by the light-volume depth test.
+    context.SetRenderTargets({gBuffer.resultTexture}, TextureHandle{});
+    context.SetDepthState(DepthState::Disabled);
     context.SetRasterizerState(RasterizerState::CullNone);
     UpdateLight(context, resources, world.directionalLight);
     context.SetShader(dirLightVertexShader_);

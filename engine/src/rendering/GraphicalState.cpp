@@ -179,9 +179,10 @@ void RenderStates::InitializeRasterizerStates(ID3D11Device* device) {
 
         desc.FrontCounterClockwise = FALSE;
 
-        desc.DepthBias = 10000;
+        // Reverse-Z: push shadow-map depths away from the light (toward 0).
+        desc.DepthBias = -10000;
         desc.DepthBiasClamp = 0.0f;
-        desc.SlopeScaledDepthBias = 2.0f;
+        desc.SlopeScaledDepthBias = -2.0f;
 
         desc.DepthClipEnable = TRUE;
         desc.ScissorEnable = FALSE;
@@ -323,10 +324,11 @@ void RenderStates::InitializeSamplerStates(ID3D11Device* device) {
         desc.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
         desc.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
 
-        desc.BorderColor[0] = 1.0f;
-        desc.BorderColor[1] = 1.0f;
-        desc.BorderColor[2] = 1.0f;
-        desc.BorderColor[3] = 1.0f;
+        // The reverse-Z far depth is 0, so samples outside the map should be lit.
+        desc.BorderColor[0] = 0.0f;
+        desc.BorderColor[1] = 0.0f;
+        desc.BorderColor[2] = 0.0f;
+        desc.BorderColor[3] = 0.0f;
         
         desc.MinLOD = 0.0f;
         desc.MaxLOD = D3D11_FLOAT32_MAX;
