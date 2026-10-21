@@ -102,7 +102,8 @@ CascadeInfo GetCascadeData(Vector3 lightDirection, Matrix cameraView, float fov,
         constexpr float zMult = 10.f; //todo: too big, wastes a lot of precision
         minV.z = (minV.z < 0) ? minV.z * zMult : minV.z / zMult;
         maxV.z = (maxV.z < 0) ? maxV.z / zMult : maxV.z * zMult;
-        auto lightProj = Matrix::CreateOrthographicOffCenter(minV.x, maxV.x, minV.y, maxV.y, -maxV.z, -minV.z);
+        //ReverseZ so near and far are swapped
+        auto lightProj = Matrix::CreateOrthographicOffCenter(minV.x, maxV.x, minV.y, maxV.y, -minV.z, -maxV.z);
         result.viewMatrices[i] = lightView;
         result.projMatrices[i] = lightProj;
         result.bufferData.viewProjections[i] = lightView * lightProj;
@@ -141,7 +142,7 @@ void ShadowCSMPass::Destroy(RenderingResourceManager& resourceManager, Rendering
 void ShadowCSMPass::Render(RenderWorld& world, RenderingContext& context, RenderingResources& resources) {
     context.SetViewport(mapSize, mapSize);
     context.SetRasterizerState(RasterizerState::CullBackWithBias);
-    context.ClearDepthView(resources.shadowTexture, 1.0f, std::nullopt);
+    context.ClearDepthView(resources.shadowTexture);
     context.SetRenderTargets({TextureHandle{}}, resources.shadowTexture);
     context.SetShader(vertexShader_);
     context.SetShader(geometryShader_);

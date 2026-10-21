@@ -59,7 +59,7 @@ struct ENGINE_API RenderingContext {
     void SetGraphicalState(GraphicalState state) const;
     void ClearState();
     void ClearHazardousState() const;
-    void ClearDepthView(TextureHandle h, std::optional<float> depth = 1.f,
+    void ClearDepthView(TextureHandle h, std::optional<float> depth = 0.f, // ReverseZ, so 0 depth is farthest
                         std::optional<UINT> stencil = std::nullopt);
     void ClearRenderTargetView(TextureHandle h,
                                std::array<float, 4> color = {0.f, 0.f, 0.f, 0.f});

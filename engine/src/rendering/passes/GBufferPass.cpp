@@ -20,10 +20,10 @@ void CreateGBuffer(RenderingResourceManager& resourceManager, RenderingResources
     gBuffer.normalTexture = resourceManager.CreateTexture(textureDesc(DXGI_FORMAT_R16G16B16A16_FLOAT));
     gBuffer.materialTexture = resourceManager.CreateTexture(textureDesc(DXGI_FORMAT_R8G8B8A8_UNORM));
     gBuffer.resultTexture = resourceManager.CreateTexture(textureDesc(DXGI_FORMAT_R16G16B16A16_FLOAT));
-    auto desc = textureDesc(DXGI_FORMAT_R24G8_TYPELESS);
+    auto desc = textureDesc(DXGI_FORMAT_R32_TYPELESS);
     desc.usage = TextureUsage::DepthStencil | TextureUsage::ShaderResource;
-    desc.dsvFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    desc.srvFormat = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+    desc.dsvFormat = DXGI_FORMAT_D32_FLOAT;
+    desc.srvFormat = DXGI_FORMAT_R32_FLOAT;
     gBuffer.depthTexture = resourceManager.CreateTexture(desc);
 }
 

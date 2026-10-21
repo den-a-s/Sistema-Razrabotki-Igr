@@ -122,7 +122,7 @@ void RenderStates::InitializeDepthStates(ID3D11Device* device) {
 
         desc.DepthEnable = TRUE;
         desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-        desc.DepthFunc = D3D11_COMPARISON_LESS;
+        desc.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL;
 
         desc.StencilEnable = FALSE;
 
@@ -135,7 +135,7 @@ void RenderStates::InitializeDepthStates(ID3D11Device* device) {
 
         desc.DepthEnable = TRUE;
         desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-        desc.DepthFunc = D3D11_COMPARISON_GREATER;
+        desc.DepthFunc = D3D11_COMPARISON_LESS;
 
         desc.StencilEnable = FALSE;
 
@@ -333,7 +333,7 @@ void RenderStates::InitializeSamplerStates(ID3D11Device* device) {
         desc.MipLODBias = 0.0f;
         desc.MaxAnisotropy = 1;
 
-        desc.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
+        desc.ComparisonFunc = D3D11_COMPARISON_GREATER_EQUAL;
         
         init(desc, SamplerState::ShadowComparison);
     }
