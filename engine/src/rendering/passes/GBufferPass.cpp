@@ -40,8 +40,8 @@ void DestroyGBuffer(RenderingResourceManager& resourceManager, RenderingResource
 
 void GBufferPass::Initialize(RenderingResourceManager& resourceManager, RenderingContext&,
                              RenderingResources& resources) {
-    vertexShader_ = resourceManager.CompileShader(L"GBufferPass.hlsl", ShaderType::Vertex);
-    pixelShader_ = resourceManager.CompileShader(L"GBufferPass.hlsl", ShaderType::Pixel);
+    vertexShader_ = resourceManager.CompileShader(L"engine/GBufferPass.hlsl", ShaderType::Vertex);
+    pixelShader_ = resourceManager.CompileShader(L"engine/GBufferPass.hlsl", ShaderType::Pixel);
 
     CreateGBuffer(resourceManager, resources);
 

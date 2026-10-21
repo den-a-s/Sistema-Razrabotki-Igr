@@ -29,7 +29,10 @@ struct AssetDesc {
     std::string name;             /// normalized name, as stored in the table
     std::filesystem::path path;   /// resolved source file or directory
     bool centerOnLoad = false;    /// meshes only: recenter and normalize the geometry
-    ShaderType shaderStage = ShaderType::Vertex;  /// shaders only: which entry point to compile
+    ShaderType shaderStage = ShaderType::Vertex;
+    ShaderCompileOptions shaderOptions;
+    bool shaderFromMemory = false;
+    std::string shaderSource;     /// generated shader source, owned by the record while the worker compiles
 };
 
 }  // namespace engine

@@ -2,6 +2,8 @@
 
 #include <engine/rendering/UglyUtils.hpp>
 
+#include <string>
+
 namespace engine {
 namespace {
 
@@ -24,9 +26,11 @@ void UpdateLight(RenderingContext& context, RenderingResources& resources,
 }
 
 void LightPass::Initialize(RenderingResourceManager& resourceManager, RenderingContext&, RenderingResources&) {
-    vertexShader_ = resourceManager.CompileShader(L"LightPass.hlsl", ShaderType::Vertex);
-    pixelShader_ = resourceManager.CompileShader(L"LightPass.hlsl", ShaderType::Pixel);
-    dirLightVertexShader_ = resourceManager.CompileShader(L"DirectionalLightVS.hlsl", ShaderType::Vertex);
+    vertexShader_ = resourceManager.CompileShader(L"engine/LightPass.hlsl", ShaderType::Vertex);
+    ShaderCompileOptions pixelOptions;
+    pixelOptions.defines = {{"PCF_RADIUS", "1"}, {"SHADOW_MAP_SIZE", std::to_string(ShadowMapSize)}};
+    pixelShader_ = resourceManager.CompileShader(L"engine/LightPass.hlsl", ShaderType::Pixel, pixelOptions);
+    dirLightVertexShader_ = resourceManager.CompileShader(L"engine/DirectionalLightVS.hlsl", ShaderType::Vertex);
     lightSphere_ = ugly_utils::FromRawMesh(resourceManager, ugly_utils::CreateSphere(1.0f));
 }
 

@@ -25,7 +25,9 @@ struct ENGINE_API RenderingResourceManager {
                           uint32_t vertexCount);
     /// Meshes own their vertex and index buffers by default. Pass false if the buffers are shared.
     bool DestroyMesh(MeshHandle meshHandle, bool destroyBuffers = true);
-    ShaderHandle CompileShader(const std::wstring& fileName, ShaderType shaderType);
+    /// File names use executable-relative engine/... or game/... shader roots.
+    ShaderHandle CompileShader(const std::wstring& fileName, ShaderType shaderType,
+                               const ShaderCompileOptions& options = {});
     /// Uploads a CPU-compiled shader to the device and registers it; main thread only.
     /// Empty handle when the device refused the bytecode.
     ShaderHandle RegisterCompiledShader(const CompiledShader& compiled);

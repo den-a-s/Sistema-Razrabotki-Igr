@@ -1,10 +1,71 @@
 #include <engine/rendering/resources/ShaderContext.hpp>
 
+#include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <limits>
+#include <memory>
+#include <unordered_map>
 #include <utility>
 #include <spdlog/spdlog.h>
 
+#include <engine/assets/AssetPathResolver.hpp>
+
 namespace engine {
+namespace {
+
+class ShaderIncludes final : public ID3DInclude {
+public:
+    explicit ShaderIncludes(std::filesystem::path sourcePath) : sourcePath_(std::move(sourcePath)) {}
+
+    HRESULT __stdcall Open(D3D_INCLUDE_TYPE type, LPCSTR name, LPCVOID parent,
+                           LPCVOID* data, UINT* size) override {
+        const std::string_view includeName{name};
+        std::filesystem::path path;
+        if (includeName.starts_with("engine/") || includeName.starts_with("game/")) {
+            path = AssetPathResolver::GetRoot() / AssetPathResolver::DefaultPath(includeName, AssetKind::Shader);
+        } else if (type == D3D_INCLUDE_LOCAL) {
+            const auto it = files_.find(parent);
+            const auto& includingFile = it == files_.end() ? sourcePath_ : it->second->path;
+            path = includingFile.parent_path() / name;
+        } else {
+            return E_FAIL; // system includes must name an explicit root
+        }
+        path = path.lexically_normal();
+        std::ifstream input(path, std::ios::binary);
+        if (!input) {
+            spdlog::error("Cannot include shader file '{}' from '{}'", path.string(), sourcePath_.string());
+            return E_FAIL;
+        }
+        std::string contents{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
+        if (contents.size() > std::numeric_limits<UINT>::max()) {
+            return E_FAIL;
+        }
+        auto file = std::make_unique<IncludeFile>();
+        file->path = std::move(path);
+        file->contents = std::make_unique<char[]>(std::max<std::size_t>(contents.size(), 1));
+        std::copy(contents.begin(), contents.end(), file->contents.get());
+        *size = static_cast<UINT>(contents.size());
+        *data = file->contents.get();
+        files_.emplace(*data, std::move(file));
+        return S_OK;
+    }
+
+    HRESULT __stdcall Close(LPCVOID data) override {
+        return files_.erase(data) == 1 ? S_OK : E_FAIL;
+    }
+
+private:
+    struct IncludeFile {
+        std::filesystem::path path;
+        std::unique_ptr<char[]> contents;
+    };
+    std::filesystem::path sourcePath_;
+    std::unordered_map<const void*, std::unique_ptr<IncludeFile>> files_;
+};
+
+} // namespace
 
 const char* GetEntryPoint(const ShaderType type) {
     switch (type) {
@@ -41,27 +102,48 @@ ShaderVertexLayout ShaderContext::ParseVertexShaderInputs(
     return result;
 }
 
-std::optional<CompiledShader> ShaderContext::CompileCpu(const std::wstring& fileName,
-                                                         const ShaderType shaderType) {
+std::optional<CompiledShader> ShaderContext::CompileCpu(const std::filesystem::path& fileName,
+                                                        const ShaderType shaderType,
+                                                        const ShaderCompileOptions& options) {
+    std::ifstream input(fileName, std::ios::binary);
+    if (!input) {
+        spdlog::error("Missing shader file: {}", fileName.string());
+        return std::nullopt;
+    }
+    const std::string source{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
+    return CompileSource(source, fileName, shaderType, options);
+}
+
+std::optional<CompiledShader> ShaderContext::CompileSource(const std::string_view source,
+                                                            const std::filesystem::path& virtualPath,
+                                                            const ShaderType shaderType,
+                                                            const ShaderCompileOptions& options) {
     CompiledShader result{};
     result.type = shaderType;
-    const auto displayName = std::filesystem::path(fileName).string();
-    ID3DBlob* errorCode = nullptr;
-    const auto res = D3DCompileFromFile(fileName.c_str(),
-                                        nullptr,
-                                        nullptr,
-                                        GetEntryPoint(shaderType),
-                                        GetDX11Target(shaderType),
-                                        D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, // todo: should be toggleable
-                                        0,
-                                        result.blob.GetAddressOf(),
-                                        &errorCode);
-    if (res < 0) {
-        if (errorCode) {
-            auto compileErrors = static_cast<char*>(errorCode->GetBufferPointer());
-            spdlog::error("Could not compile shader {}: {}", displayName, compileErrors);
+    const auto sourcePath = virtualPath.is_absolute() ? virtualPath : AssetPathResolver::GetRoot() / virtualPath;
+    const auto displayName = sourcePath.string();
+    ShaderIncludes includes{sourcePath};
+    std::vector<D3D_SHADER_MACRO> macros;
+    macros.reserve(options.defines.size() + 1);
+    for (const auto& define : options.defines) {
+        macros.push_back({define.name.c_str(), define.value.c_str()});
+    }
+    macros.push_back({nullptr, nullptr});
+    ComPtr<ID3DBlob> errors;
+    const auto res = D3DCompile(source.data(), source.size(), displayName.c_str(),
+                                         macros.data(), &includes,
+                                         options.entryPoint.empty() ? GetEntryPoint(shaderType) : options.entryPoint.c_str(),
+                                         GetDX11Target(shaderType),
+                                         D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, // todo: should be toggleable
+                                         0,
+                                         result.blob.GetAddressOf(),
+                                         errors.GetAddressOf());
+    if (FAILED(res)) {
+        if (errors) {
+            spdlog::error("Could not compile shader {}: {}", displayName,
+                          static_cast<const char*>(errors->GetBufferPointer()));
         } else {
-            spdlog::error("Missing Shader File: {}", displayName);
+            spdlog::error("Could not compile shader {}: {:08x}", displayName, static_cast<unsigned>(res));
         }
         return std::nullopt;
     }
@@ -150,9 +232,10 @@ std::optional<ShaderContext> ShaderContext::FinalizeOnDevice(const CompiledShade
 }
 
 std::optional<ShaderContext> ShaderContext::CompileShader(ID3D11Device* device, InputLayoutCache& layoutCache,
-                                                           const std::wstring& fileName,
-                                                           const ShaderType shaderType) {
-    const auto compiled = CompileCpu(fileName, shaderType);
+                                                            const std::filesystem::path& fileName,
+                                                            const ShaderType shaderType,
+                                                            const ShaderCompileOptions& options) {
+    const auto compiled = CompileCpu(fileName, shaderType, options);
     if (!compiled) {
         return std::nullopt;
     }

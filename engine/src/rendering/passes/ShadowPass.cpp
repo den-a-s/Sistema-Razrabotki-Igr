@@ -5,7 +5,7 @@
 namespace engine {
 namespace {
 
-constexpr uint32_t mapSize = 1024;
+constexpr uint32_t mapSize = ShadowMapSize;
 
 std::vector<Vector4> GetFrustumCorners(const Matrix& viewMatrix, const Matrix& projectionMatrix) {
     std::vector<Vector4> frustumCorners;
@@ -111,8 +111,8 @@ CascadeInfo GetCascadeData(Vector3 lightDirection, const FPSCamera& camera) {
 
 void ShadowCSMPass::Initialize(RenderingResourceManager& resourceManager, RenderingContext&,
                                RenderingResources& resources) {
-    vertexShader_ = resourceManager.CompileShader(L"ShadowCSMPass.hlsl", ShaderType::Vertex);
-    geometryShader_ = resourceManager.CompileShader(L"ShadowCSMPass.hlsl", ShaderType::Geometry);
+    vertexShader_ = resourceManager.CompileShader(L"engine/ShadowCSMPass.hlsl", ShaderType::Vertex);
+    geometryShader_ = resourceManager.CompileShader(L"engine/ShadowCSMPass.hlsl", ShaderType::Geometry);
     const TextureDesc shadowTextureDesc{
         .width = mapSize, .height = mapSize, .arraySize = 4,
         .format = DXGI_FORMAT_R24G8_TYPELESS,

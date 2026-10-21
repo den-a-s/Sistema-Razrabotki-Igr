@@ -6,12 +6,20 @@ target_link_libraries(ExampleGame PRIVATE
     Engine::EngineStatic
 )
 
+set(GAME_SHADER_COPY_COMMAND)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
+    set(GAME_SHADER_COPY_COMMAND
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/shaders" "$<TARGET_FILE_DIR:ExampleGame>/game/shaders")
+endif()
+
 add_custom_target(ExampleGameAssets ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory
         "$<TARGET_FILE_DIR:ExampleGame>/engine"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${PROJECT_SOURCE_DIR}/engine/shaders"
         "$<TARGET_FILE_DIR:ExampleGame>/engine/shaders"
+    ${GAME_SHADER_COPY_COMMAND}
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/models"
         "$<TARGET_FILE_DIR:ExampleGame>/models"

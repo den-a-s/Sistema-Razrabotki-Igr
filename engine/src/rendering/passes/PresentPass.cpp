@@ -34,8 +34,8 @@ TextureHandle CreateBackbufferTexture(RenderingResourceManager& resourceManager,
 
 void PresentPass::Initialize(RenderingResourceManager& resourceManager, RenderingContext& context,
                              RenderingResources&) {
-    vertexShader_ = resourceManager.CompileShader(L"PresentPass.hlsl", ShaderType::Vertex);
-    pixelShader_ = resourceManager.CompileShader(L"PresentPass.hlsl", ShaderType::Pixel);
+    vertexShader_ = resourceManager.CompileShader(L"engine/PresentPass.hlsl", ShaderType::Vertex);
+    pixelShader_ = resourceManager.CompileShader(L"engine/PresentPass.hlsl", ShaderType::Pixel);
 
     backBufferView_ = CreateBackbufferTexture(resourceManager, context);
     if (!backBufferView_) {

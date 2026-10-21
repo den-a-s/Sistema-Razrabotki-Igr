@@ -11,6 +11,8 @@
 
 namespace engine {
 
+inline constexpr uint32_t ShadowMapSize = 2048;
+
 using DirectX::SimpleMath::Vector2;
 using DirectX::SimpleMath::Vector3;
 using DirectX::SimpleMath::Vector4;

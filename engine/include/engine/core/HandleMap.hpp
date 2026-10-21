@@ -16,6 +16,11 @@ namespace engine {
 
 template <typename T>
 struct HandleMap {
+    HandleMap() = default;
+    HandleMap(const HandleMap&) = delete;
+    HandleMap& operator=(const HandleMap&) = delete;
+    HandleMap(HandleMap&&) noexcept = default;
+    HandleMap& operator=(HandleMap&&) noexcept = default;
 
     struct Handle {
         uint32_t id = std::numeric_limits<uint32_t>::max();

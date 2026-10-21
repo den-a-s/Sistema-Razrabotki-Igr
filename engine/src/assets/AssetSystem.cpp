@@ -1,5 +1,6 @@
 #include <engine/assets/AssetSystem.hpp>
 
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <string>
@@ -20,46 +21,46 @@ namespace engine {
 namespace {
 
 template <typename T>
-bool IsSatisfied(const typename AssetTable<T>::Record& record) {
-    if (record.state != AssetState::Ready) {
-        return false;
-    }
-    if constexpr (std::is_same_v<T, ShaderAsset>) {
-        switch (record.desc.shaderStage) {
-        case ShaderType::Vertex:
-            return static_cast<bool>(record.value->vertex);
-        case ShaderType::Pixel:
-            return static_cast<bool>(record.value->pixel);
-        case ShaderType::Geometry:
-            return static_cast<bool>(record.value->geometry);
-        }
-        return false;
-    } else {
-        return true;
-    }
-}
-
-/// The value to publish: for a shader record the stages of the resource it already
-/// published are carried over, because a resource handed out earlier is never mutated.
-template <typename T>
-T MakeValue(const entt::resource<T>& existing, const GpuPayload& gpu) {
+T MakeValue(const AssetDesc& desc, const GpuPayload& gpu) {
     if constexpr (std::is_same_v<T, MeshAsset>) {
         return MeshAsset{gpu.mesh};
     } else if constexpr (std::is_same_v<T, TextureAsset>) {
         return TextureAsset{gpu.texture};
     } else {
-        ShaderAsset value = existing ? ShaderAsset{*existing} : ShaderAsset{};
-        if (gpu.vertex) {
-            value.vertex = gpu.vertex;
-        }
-        if (gpu.pixel) {
-            value.pixel = gpu.pixel;
-        }
-        if (gpu.geometry) {
-            value.geometry = gpu.geometry;
-        }
-        return value;
+        return ShaderAsset{gpu.shader, desc.shaderStage};
     }
+}
+
+void AppendKeyPart(std::string& key, const std::string_view part) {
+    key += std::to_string(part.size());
+    key += ':';
+    key.append(part);
+}
+
+std::uint64_t HashSource(const std::string_view source) {
+    std::uint64_t hash = 14695981039346656037ull;
+    for (const unsigned char byte : source) {
+        hash = (hash ^ byte) * 1099511628211ull;
+    }
+    return hash;
+}
+
+std::string ShaderVariantName(const AssetDesc& desc) {
+    std::string key = "shader:";
+    AppendKeyPart(key, desc.path.generic_string());
+    AppendKeyPart(key, std::to_string(static_cast<int>(desc.shaderStage)));
+    AppendKeyPart(key, desc.shaderOptions.entryPoint);
+    AppendKeyPart(key, std::to_string(desc.shaderOptions.defines.size()));
+    for (const auto& define : desc.shaderOptions.defines) {
+        AppendKeyPart(key, define.name);
+        AppendKeyPart(key, define.value);
+    }
+    AppendKeyPart(key, desc.shaderFromMemory ? "memory" : "file");
+    if (desc.shaderFromMemory) {
+        AppendKeyPart(key, std::to_string(desc.shaderSource.size()));
+        AppendKeyPart(key, std::to_string(HashSource(desc.shaderSource)));
+    }
+    return key;
 }
 
 template <typename T>
@@ -129,21 +130,65 @@ entt::resource<TextureAsset> AssetSystem::LoadTexture(const std::string_view nam
     return LoadSync(RequestTexture(name));
 }
 
-entt::resource<ShaderAsset> AssetSystem::LoadShader(const std::string_view name, const ShaderType stage) {
-    AssetDesc desc;
-    desc.name = NormalizeName(name);
-    desc.path = AssetPathResolver::DefaultPath(desc.name, AssetKind::Shader);
-    desc.shaderStage = stage;
+entt::resource<ShaderAsset> AssetSystem::LoadShader(const std::string_view name, const ShaderType stage,
+                                                    ShaderCompileOptions options) {
+    return LoadSync(RequestShader(name, stage, std::move(options)));
+}
 
-    const AssetHandle<ShaderAsset> handle = Request<ShaderAsset>(std::move(desc));
-    if (typename AssetTable<ShaderAsset>::Record* record = Table<ShaderAsset>().Get(handle)) {
-        if (record->state == AssetState::Ready) {
-            // A reused record keeps the stage it was first requested with; patching it is
-            // only safe once no job can read the description.
-            record->desc.shaderStage = stage;
+entt::resource<ShaderAsset> AssetSystem::LoadShaderSource(const std::string_view virtualPath, std::string source,
+                                                          const ShaderType stage, ShaderCompileOptions options) {
+    return LoadSync(RequestShaderSource(virtualPath, std::move(source), stage, std::move(options)));
+}
+
+AssetHandle<ShaderAsset> AssetSystem::RequestShader(const std::string_view name, const ShaderType stage,
+                                                   ShaderCompileOptions options) {
+    AssetDesc desc;
+    desc.path = AssetPathResolver::DefaultPath(NormalizeName(name), AssetKind::Shader);
+    if (desc.path.extension().empty()) {
+        desc.path += ".hlsl";
+    }
+    desc.shaderStage = stage;
+    desc.shaderOptions = std::move(options);
+    return RequestShaderVariant(std::move(desc));
+}
+
+AssetHandle<ShaderAsset> AssetSystem::RequestShaderSource(const std::string_view virtualPath, std::string source,
+                                                         const ShaderType stage, ShaderCompileOptions options) {
+    AssetDesc desc;
+    desc.path = AssetPathResolver::DefaultPath(NormalizeName(virtualPath), AssetKind::Shader);
+    if (desc.path.extension().empty()) {
+        desc.path += ".hlsl";
+    }
+    desc.shaderStage = stage;
+    desc.shaderOptions = std::move(options);
+    desc.shaderFromMemory = true;
+    desc.shaderSource = std::move(source);
+    return RequestShaderVariant(std::move(desc));
+}
+
+AssetHandle<ShaderAsset> AssetSystem::RequestShaderVariant(AssetDesc&& desc) {
+    if (desc.shaderOptions.entryPoint.empty()) {
+        desc.shaderOptions.entryPoint = GetEntryPoint(desc.shaderStage);
+    }
+    auto& defines = desc.shaderOptions.defines;
+    std::ranges::sort(defines, {}, &ShaderDefine::name);
+    for (std::size_t i = 0; i < defines.size(); ++i) {
+        if (defines[i].name.empty() || (i > 0 && defines[i].name == defines[i - 1].name)) {
+            spdlog::error("Invalid or duplicate shader define for '{}'", desc.path.string());
+            return AssetHandle<ShaderAsset>::Invalid();
         }
     }
-    return LoadSync(handle);
+    desc.name = ShaderVariantName(desc);
+    // The source hash is only a compact part of the key; do not silently alias
+    // different generated sources if it ever collides.
+    if (const auto existing = shaders_.Find(desc.name)) {
+        if (shaders_.Get(existing)->desc.shaderSource != desc.shaderSource ||
+            shaders_.Get(existing)->desc.shaderFromMemory != desc.shaderFromMemory) {
+            spdlog::error("Shader source identity collision for '{}'", desc.path.string());
+            return AssetHandle<ShaderAsset>::Invalid();
+        }
+    }
+    return Request<ShaderAsset>(std::move(desc));
 }
 
 AssetHandle<MeshAsset> AssetSystem::RequestMesh(const std::string_view name, const bool centerOnLoad) {
@@ -192,13 +237,12 @@ entt::resource<T> AssetSystem::LoadSync(const AssetHandle<T> handle) {
     if (record == nullptr) {
         return {};
     }
-    if (IsSatisfied<T>(*record)) {
+    if (record->state == AssetState::Ready) {
         return record->value;
     }
 
     const AssetKind kind = AssetValueKind<T>::value;
     if (record->state != AssetState::Loading) {
-        // Adding a stage to an already Ready shader record: the slot is taken, no job runs.
         table.MarkLoading(handle);
         DispatchJob(kind, record->desc, handle.slot, handle.generation);
     }
@@ -292,7 +336,7 @@ entt::resource<T> AssetSystem::FinishTyped(const LoadJob& job, AssetTable<T>& ta
     spdlog::info("AssetSystem: '{}' ({}) published on frame {} ({} s after queueing)",
                  job.name, ToString(job.kind), frameIndex, totalSeconds);
 
-    entt::resource<T> value = table.Publish(handle, MakeValue<T>(record->value, gpu));
+    entt::resource<T> value = table.Publish(handle, MakeValue<T>(record->desc, gpu));
     engine_.GetEvents().trigger(AssetLoadedEvent{job.id, job.name, job.kind});
     return value;
 }

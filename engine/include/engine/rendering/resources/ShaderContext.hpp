@@ -1,7 +1,12 @@
 #pragma once
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -18,6 +23,17 @@ enum class ShaderType {
     Vertex,
     Pixel,
     Geometry,
+};
+
+struct ShaderDefine {
+    std::string name;
+    std::string value = "1";
+};
+
+struct ShaderCompileOptions {
+    /// Empty selects VSMain, PSMain or GSMain for the requested stage.
+    std::string entryPoint;
+    std::vector<ShaderDefine> defines;
 };
 
 ENGINE_API const char* GetEntryPoint(ShaderType type);
@@ -57,10 +73,16 @@ struct ENGINE_API ShaderContext {
     std::vector<ShaderBinding> bindings{};
 
     static std::optional<ShaderContext> CompileShader(ID3D11Device* device, InputLayoutCache& layoutCache,
-                                                       const std::wstring& fileName, ShaderType shaderType);
+                                                        const std::filesystem::path& fileName, ShaderType shaderType,
+                                                        const ShaderCompileOptions& options = {});
 
     /// D3DCompile + reflection only; runs on any thread.
-    static std::optional<CompiledShader> CompileCpu(const std::wstring& fileName, ShaderType shaderType);
+    static std::optional<CompiledShader> CompileCpu(const std::filesystem::path& fileName, ShaderType shaderType,
+                                                    const ShaderCompileOptions& options = {});
+    /// Compiles generated HLSL; virtualPath supplies its include location and diagnostic name.
+    static std::optional<CompiledShader> CompileSource(std::string_view source,
+                                                       const std::filesystem::path& virtualPath, ShaderType shaderType,
+                                                       const ShaderCompileOptions& options = {});
     /// Create*Shader and input-layout registration; main thread.
     static std::optional<ShaderContext> FinalizeOnDevice(const CompiledShader& compiled, ID3D11Device* device,
                                                           InputLayoutCache& layoutCache);

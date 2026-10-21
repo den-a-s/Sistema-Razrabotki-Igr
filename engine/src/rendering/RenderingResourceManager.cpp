@@ -4,6 +4,8 @@
 #include <utility>
 #include <spdlog/spdlog.h>
 
+#include <engine/assets/AssetPathResolver.hpp>
+
 namespace engine {
 
 void RenderingResourceManager::Initialize(ID3D11Device* device) {
@@ -85,10 +87,12 @@ bool RenderingResourceManager::DestroyMesh(const MeshHandle meshHandle, const bo
     return true;
 }
 
-ShaderHandle RenderingResourceManager::CompileShader(const std::wstring& fileName, const ShaderType shaderType) {
-    std::wstring path = L"./engine/shaders/";
-    path += fileName;
-    auto shader = ShaderContext::CompileShader(device_.Get(), inputLayoutCache_, path, shaderType);
+ShaderHandle RenderingResourceManager::CompileShader(const std::wstring& fileName, const ShaderType shaderType,
+                                                      const ShaderCompileOptions& options) {
+    AssetDesc desc;
+    desc.path = AssetPathResolver::DefaultPath(std::filesystem::path(fileName).string(), AssetKind::Shader);
+    auto shader = ShaderContext::CompileShader(device_.Get(), inputLayoutCache_,
+                                                AssetPathResolver::ResolveShader(desc), shaderType, options);
     if (!shader) {
         spdlog::critical("Failed to compile shader");
         std::exit(1);

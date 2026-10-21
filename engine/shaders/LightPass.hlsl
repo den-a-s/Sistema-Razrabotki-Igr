@@ -1,62 +1,4 @@
-#pragma pack_matrix(row_major)
-
-#pragma pack_matrix(row_major)
-
-struct EngineFrameData {
-    float4 unusedForNow; //todo
-};
-
-cbuffer EngineFrame : register(b0) {
-    EngineFrameData Frame;
-};
-
-struct EngineViewData {
-    float4x4 viewMatrix;
-    float4x4 projectionMatrix;
-    float4x4 invViewProj;
-    float3 cameraPos;
-    float2 viewportSize;
-};
-
-cbuffer EngineView : register(b1) {
-    EngineViewData View;
-}
-
-struct EngineMaterialData {
-    float3 specularColor;
-    float shininess;
-};
-
-cbuffer EngineMaterial : register(b2) {
-    EngineMaterialData Material;
-}
-
-struct EngineObjectData {
-    float4x4 worldMatrix;  
-    float4x4 normalMatrix; //todo: may be split to separate object as only GBuffer and CS passes currently need this
-};
-
-cbuffer EngineObject : register(b3) {
-    EngineObjectData Object;
-}
-
-
-struct ShadowCascadesData {
-    float4x4 viewProjections[4];
-    float4 distances;
-    float4 transitionStarts;
-};
-
-cbuffer EngineCascades : register(b4) {
-    ShadowCascadesData ShadowCascades;
-}
-
-SamplerState PointClampSampler : register(s0);
-SamplerState LinearClampSampler : register(s1);
-SamplerState LinearWrapSampler : register(s2);
-SamplerState AnisotropicWrapSampler : register(s3);
-SamplerComparisonState ShadowComparisonSampler : register(s4);
-//#include "Common.hlsl"
+#include "Common.hlsl"
 
 struct LightBufferData {
     float3 color;
@@ -104,8 +46,13 @@ PS_IN VSMain(VS_IN input) {
     return output;
 }
 
+#ifndef PCF_RADIUS
 #define PCF_RADIUS 1
-#define PCF_TEXEL_SIZE 1.f / 1024 //todo: parametrize
+#endif
+#ifndef SHADOW_MAP_SIZE
+#define SHADOW_MAP_SIZE 1024
+#endif
+#define PCF_TEXEL_SIZE (1.0f / SHADOW_MAP_SIZE)
 
 float SampleShadowHybridPCF(float2 pixelCoords, int layer, float z) {
     float sum = 0.0;
