@@ -1,5 +1,7 @@
 #include <engine/rendering/passes/ShadowPass.hpp>
 
+#include <cmath>
+
 namespace engine {
 namespace {
 
@@ -25,18 +27,6 @@ std::vector<Vector4> GetFrustumCorners(const Matrix& viewMatrix, const Matrix& p
     return frustumCorners;
 }
 
-std::pair<Vector4, Vector4> GetMinMaxVector(const std::vector<Vector4>& frustumCorners) {
-    float maxF = 1e30f;
-    Vector4 minV{maxF, maxF, maxF, maxF};
-    Vector4 maxV = -minV;
-
-    for (auto& corner : frustumCorners) {
-        minV = Vector4::Min(minV, corner);
-        maxV = Vector4::Max(maxV, corner);
-    }
-    return {minV, maxV};
-}
-
 CascadeInfo GetCascadeData(Vector3 lightDirection, Matrix cameraView, float fov, float aspect, float nearPlane,
                            float farPlane) {
     std::array<float, 5> distances{nearPlane, 0, 0, 0, farPlane};
@@ -48,8 +38,8 @@ CascadeInfo GetCascadeData(Vector3 lightDirection, Matrix cameraView, float fov,
         distances[i] = exp * t + linear * (1.0f - t);
     }
     CascadeInfo result{};
-    // Each following cascade renders the last part of its predecessor's depth
-    // range as well, so lighting can blend two valid shadow samples at a split.
+    // Each following cascade renders the last part of its predecessor's depth range as well, 
+    // so lighting can blend two valid shadow samples at a split.
     constexpr float transitionFraction = 0.7f;
     for (int i = 0; i < 3; ++i) {
         result.bufferData.transitionStarts[i] =
@@ -69,32 +59,27 @@ CascadeInfo GetCascadeData(Vector3 lightDirection, Matrix cameraView, float fov,
         }
         center /= 8.f;
 
-        float radius = 0.0f;
-        for (auto& corner : frustumCorners) {
-            radius = (std::max)(radius, (corner - center).Length());
-        }
+        // A sphere centered halfway along this frustum slice encloses its far corners. 
+        // Its radius depends only on FOV, aspect and split distances, so rotating the camera cannot change the shadow projection's scale.
+        const float halfDepth = (curFar - curNear) * 0.5f;
+        const float farHalfHeight = curFar * std::tan(fov * 0.5f);
+        const float farCornerRadius = farHalfHeight * std::sqrt(1.0f + aspect * aspect);
+        float radius = std::sqrt(halfDepth * halfDepth + farCornerRadius * farCornerRadius);
         // Leave room for the PCF taps and texel snapping at the projection edge.
         radius = std::ceil(radius * 16.0f) / 16.0f * 1.01f;
 
         auto L = lightDirection;
         L.Normalize();
-        Vector3 cascadeCenter{center.x, center.y, center.z};
 
         Vector3 up = Vector3::Up;
         if (std::abs(L.Dot(up)) > 0.99f) {
             up = Vector3::Right;
         }
 
-        //currently light view points at fixed point
-        // auto lightView = Matrix::CreateLookAt(-L * 10, Vector3::Zero, Vector3::Up);
-        float lightDistance = radius * 2.0f;
-        auto lightView = Matrix::CreateLookAt(cascadeCenter - L * lightDistance, cascadeCenter, up);
+        // Keep the light axes anchored in world space. A view centered on the cascade would always put centerLight at (0, 0)
+        const auto lightView = Matrix::CreateLookAt(-L, Vector3::Zero, up);
 
-        for (auto& corner : frustumCorners) {
-            corner = Vector4::Transform(corner, lightView);
-        }
         auto centerLight = Vector4::Transform(center, lightView);
-        auto [minV, maxV] = GetMinMaxVector(frustumCorners);
 
         constexpr float shadowMapSize = static_cast<float>(512); //translucency map will be 512
         //As this is only for snapping to avoid jitter, 512 would be fine for 1024 size maps too.
@@ -103,19 +88,13 @@ CascadeInfo GetCascadeData(Vector3 lightDirection, Matrix cameraView, float fov,
         centerLight.x = std::round(centerLight.x / texelSize) * texelSize;
         centerLight.y = std::round(centerLight.y / texelSize) * texelSize;
 
-        minV.x = centerLight.x - radius;
-        maxV.x = centerLight.x + radius;
-        minV.y = centerLight.y - radius;
-        maxV.y = centerLight.y + radius;
-
-        // Frustum bounds alone can clip off-screen shadow casters. Extend both
-        // ends by a fixed world-space margin relative to this cascade's size,
-        // rather than multiplying light-space Z (which also magnifies depth bias).
         const float casterMargin = radius * 2.0f;
-        minV.z -= casterMargin;
-        maxV.z += casterMargin;
-        //ReverseZ so near and far are swapped
-        auto lightProj = Matrix::CreateOrthographicOffCenter(minV.x, maxV.x, minV.y, maxV.y, -minV.z, -maxV.z);
+        const float minZ = centerLight.z - radius - casterMargin;
+        const float maxZ = centerLight.z + radius + casterMargin;
+        // Reverse-Z: swap the light-space near and far distances.
+        auto lightProj = Matrix::CreateOrthographicOffCenter(
+            centerLight.x - radius, centerLight.x + radius,
+            centerLight.y - radius, centerLight.y + radius, -minZ, -maxZ);
         result.viewMatrices[i] = lightView;
         result.projMatrices[i] = lightProj;
         result.bufferData.viewProjections[i] = lightView * lightProj;
@@ -145,7 +124,7 @@ void ShadowCSMPass::Initialize(RenderingResourceManager& resourceManager, Render
 }
 
 void ShadowCSMPass::Destroy(RenderingResourceManager& resourceManager, RenderingContext& context,
-    RenderingResources& resources) {
+                            RenderingResources& resources) {
     resourceManager.DestroyShader(vertexShader_);
     resourceManager.DestroyShader(geometryShader_);
     resourceManager.DestroyTexture(resources.shadowTexture);
@@ -162,18 +141,18 @@ void ShadowCSMPass::Render(RenderWorld& world, RenderingContext& context, Render
 
     world.BindDirectionalLightView(context, resources);
     resources.cascadeInfo = GetCascadeData(world.directionalLight.direction, world.camera);
-    resources.shadowCascadesCBuffer.Update(context, [&](CascadeBufferData & data){
+    resources.shadowCascadesCBuffer.Update(context, [&](CascadeBufferData& data){
         data = resources.cascadeInfo.bufferData;
     });
 
-    for (const auto & ri : world.renderItems) {
-        resources.materialCBuffer.Update(context, [&](MaterialBufferData & data){
+    for (const auto& ri : world.renderItems) {
+        resources.materialCBuffer.Update(context, [&](MaterialBufferData& data){
             data.specularColor = ri.material.specularColor;
             data.shininess = ri.material.shininess;
             data.specialType = ri.material.specialType;
         });
 
-        resources.objectCBuffer.Update(context, [&](ObjectBufferData & data){
+        resources.objectCBuffer.Update(context, [&](ObjectBufferData& data){
             data.worldMatrix = ri.worldMatrix;
             data.normalMatrix = ri.worldMatrix.Invert().Transpose();
         });
