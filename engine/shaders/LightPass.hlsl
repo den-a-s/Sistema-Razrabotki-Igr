@@ -44,6 +44,7 @@ cbuffer EngineObject : register(b3) {
 struct ShadowCascadesData {
     float4x4 viewProjections[4];
     float4 distances;
+    float4 transitionStarts;
 };
 
 cbuffer EngineCascades : register(b4) {
@@ -131,9 +132,17 @@ float SampleShadowHybridPCF(float2 pixelCoords, int layer, float z) {
     return sum / samples;
 }
 
+float SampleCascadeShadow(float3 worldPos, int cascadeIndex) {
+    float4 lightSpacePos = mul(float4(worldPos, 1.0), ShadowCascades.viewProjections[cascadeIndex]);
+    float3 ndcPos = lightSpacePos.xyz / lightSpacePos.w;
+
+    // X[-1, 1] -> [0, 1], Y[-1, 1] -> [1, 0]
+    float2 texCoords = float2(ndcPos.x * 0.5 + 0.5, -ndcPos.y * 0.5 + 0.5);
+    return SampleShadowHybridPCF(texCoords, cascadeIndex, ndcPos.z);
+}
+
 float CalculateShadow(float3 worldPos) {
     float viewSpaceZ = mul(float4(worldPos, 1.0), View.viewMatrix).z;
-
 
     int cascadeIndex = 3;
     float depth = abs(viewSpaceZ);
@@ -144,13 +153,15 @@ float CalculateShadow(float3 worldPos) {
         }
     }
 
-    float4 lightSpacePos = mul(float4(worldPos, 1.0), ShadowCascades.viewProjections[cascadeIndex]);
-    float3 ndcPos = lightSpacePos.xyz / lightSpacePos.w;
-
-    //X[-1, 1] -> [0, 1], Y[-1, 1] -> [1, 0]
-    float2 texCoords = float2(ndcPos.x * 0.5 + 0.5, -ndcPos.y * 0.5 + 0.5);
-    return SampleShadowHybridPCF(texCoords, cascadeIndex, ndcPos.z);
-
+    float shadow = SampleCascadeShadow(worldPos, cascadeIndex);
+    //Lerp adjacent cascades to smooth cascade change effect
+    if (cascadeIndex < 3 && depth >= ShadowCascades.transitionStarts[cascadeIndex]) {
+        float start = ShadowCascades.transitionStarts[cascadeIndex];
+        float end = ShadowCascades.distances[cascadeIndex];
+        float t = saturate((depth - start) / (end - start));
+        shadow = lerp(shadow, SampleCascadeShadow(worldPos, cascadeIndex + 1), t);
+    }
+    return shadow;
 }
 
 float3 GetWorldPosFromDepth(float2 texCoord, float depth, float4x4 inv) {

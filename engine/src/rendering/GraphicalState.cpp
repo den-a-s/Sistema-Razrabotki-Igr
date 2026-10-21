@@ -180,9 +180,9 @@ void RenderStates::InitializeRasterizerStates(ID3D11Device* device) {
         desc.FrontCounterClockwise = FALSE;
 
         // Reverse-Z: push shadow-map depths away from the light (toward 0).
-        desc.DepthBias = -10000;
+        desc.DepthBias = -1;
         desc.DepthBiasClamp = 0.0f;
-        desc.SlopeScaledDepthBias = -2.0f;
+        desc.SlopeScaledDepthBias = -1.0f;
 
         desc.DepthClipEnable = TRUE;
         desc.ScissorEnable = FALSE;

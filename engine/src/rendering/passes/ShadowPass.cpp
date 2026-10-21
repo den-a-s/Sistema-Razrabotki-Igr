@@ -40,15 +40,23 @@ std::pair<Vector4, Vector4> GetMinMaxVector(const std::vector<Vector4>& frustumC
 CascadeInfo GetCascadeData(Vector3 lightDirection, Matrix cameraView, float fov, float aspect, float nearPlane,
                            float farPlane) {
     std::array<float, 5> distances{nearPlane, 0, 0, 0, farPlane};
+    // Blend log and linear scales.
     for (int i = 4; i >= 1; i--) {
-        float t = 0.8f;
+        constexpr float t = 0.7f;
         float exp = nearPlane * powf(farPlane / nearPlane, static_cast<float>(i) / 4.f);
         float linear = nearPlane + (farPlane - nearPlane) * static_cast<float>(i) / 4.f;
         distances[i] = exp * t + linear * (1.0f - t);
     }
     CascadeInfo result{};
+    // Each following cascade renders the last part of its predecessor's depth
+    // range as well, so lighting can blend two valid shadow samples at a split.
+    constexpr float transitionFraction = 0.7f;
+    for (int i = 0; i < 3; ++i) {
+        result.bufferData.transitionStarts[i] =
+            distances[i + 1] - (distances[i + 1] - distances[i]) * transitionFraction;
+    }
     for (int i = 0; i < 4; i++) {
-        float curNear = distances[i];
+        float curNear = i == 0 ? distances[i] : result.bufferData.transitionStarts[i - 1];
         float curFar = distances[i + 1];
 
         result.bufferData.distances[i] = curFar;
@@ -65,7 +73,8 @@ CascadeInfo GetCascadeData(Vector3 lightDirection, Matrix cameraView, float fov,
         for (auto& corner : frustumCorners) {
             radius = (std::max)(radius, (corner - center).Length());
         }
-        radius = std::ceil(radius * 16.0f) / 16.0f;
+        // Leave room for the PCF taps and texel snapping at the projection edge.
+        radius = std::ceil(radius * 16.0f) / 16.0f * 1.01f;
 
         auto L = lightDirection;
         L.Normalize();
@@ -99,9 +108,12 @@ CascadeInfo GetCascadeData(Vector3 lightDirection, Matrix cameraView, float fov,
         minV.y = centerLight.y - radius;
         maxV.y = centerLight.y + radius;
 
-        constexpr float zMult = 10.f; //todo: too big, wastes a lot of precision
-        minV.z = (minV.z < 0) ? minV.z * zMult : minV.z / zMult;
-        maxV.z = (maxV.z < 0) ? maxV.z / zMult : maxV.z * zMult;
+        // Frustum bounds alone can clip off-screen shadow casters. Extend both
+        // ends by a fixed world-space margin relative to this cascade's size,
+        // rather than multiplying light-space Z (which also magnifies depth bias).
+        const float casterMargin = radius * 2.0f;
+        minV.z -= casterMargin;
+        maxV.z += casterMargin;
         //ReverseZ so near and far are swapped
         auto lightProj = Matrix::CreateOrthographicOffCenter(minV.x, maxV.x, minV.y, maxV.y, -minV.z, -maxV.z);
         result.viewMatrices[i] = lightView;

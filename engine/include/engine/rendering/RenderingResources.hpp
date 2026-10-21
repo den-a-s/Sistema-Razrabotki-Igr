@@ -44,6 +44,7 @@ struct ObjectBufferData {
 struct CascadeBufferData {
     std::array<Matrix, 4> viewProjections{};
     std::array<float, 4> distances{};
+    std::array<float, 4> transitionStarts{};
 };
 
 struct LightBufferData {
