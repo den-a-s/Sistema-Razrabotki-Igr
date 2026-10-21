@@ -1,5 +1,3 @@
-#include "AssetPipeline.hpp"
-
 #include <format>
 #include <utility>
 #include <vector>
@@ -10,6 +8,7 @@
 #include <WICTextureLoader.h>
 
 #include <engine/assets/AssetPathResolver.hpp>
+#include <engine/assets/AssetPipeline.hpp>
 
 namespace engine {
 namespace {
@@ -19,12 +18,15 @@ namespace {
 /// this call took a refcount, so the matching CoUninitialize stays balanced either way.
 class ScopedCom {
 public:
-    ScopedCom() : ok_(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) {}
+    ScopedCom() : ok_(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) {
+    }
+
     ~ScopedCom() {
         if (ok_) {
             CoUninitialize();
         }
     }
+
     ScopedCom(const ScopedCom&) = delete;
     ScopedCom& operator=(const ScopedCom&) = delete;
 
@@ -36,7 +38,7 @@ private:
     bool ok_ = false;
 };
 
-}  // namespace
+} // namespace
 
 bool TextureImporter::ReadCpu(const AssetDesc& desc, ID3D11Device* device, CpuPayload& payload,
                               std::string& error) const {
@@ -105,4 +107,4 @@ bool TextureImporter::UploadGpu(const UploadTransfer& transfer, const CpuPayload
     return true;
 }
 
-}  // namespace engine
+} // namespace engine

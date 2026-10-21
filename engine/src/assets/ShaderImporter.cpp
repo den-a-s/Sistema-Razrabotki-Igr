@@ -1,8 +1,7 @@
-#include "AssetPipeline.hpp"
-
 #include <utility>
 
 #include <engine/assets/AssetPathResolver.hpp>
+#include <engine/assets/AssetPipeline.hpp>
 
 namespace engine {
 

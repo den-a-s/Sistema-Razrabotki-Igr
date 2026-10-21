@@ -8,12 +8,11 @@
 
 #include <spdlog/spdlog.h>
 
-#include "AssetPipeline.hpp"
-
 #include <engine/rendering/RenderingContext.hpp>
 #include <engine/rendering/RenderingSubsystem.hpp>
 #include <engine/assets/AssetEvents.hpp>
 #include <engine/assets/AssetPathResolver.hpp>
+#include <engine/assets/AssetPipeline.hpp>
 #include <engine/core/FrameContext.hpp>
 #include <engine/engine.hpp>
 
