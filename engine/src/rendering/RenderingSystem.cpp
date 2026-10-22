@@ -13,7 +13,7 @@ bool RenderingSystem::Initialize(const NativeSurface& surface) {
 }
 
 bool RenderingSystem::Reinitialize(const NativeSurface& surface) {
-    if (!resources_ || !surface.IsValid()) {
+    if (!surface.IsValid()) {
         return false;
     }
     ready_ = false;
@@ -21,7 +21,7 @@ bool RenderingSystem::Reinitialize(const NativeSurface& surface) {
     renderingContext_.ClearState();
     auto& resourceManager = renderingContext_.GetResourceManager();
     for (const auto& renderPass : renderPasses_) {
-        if (!renderPass->PreReinitialize(resourceManager, renderingContext_, *resources_)) {
+        if (!renderPass->PreReinitialize(resourceManager, renderingContext_, resources_)) {
             spdlog::error("Rendering pass failed to release resources before resize");
             return false;
         }
@@ -32,16 +32,16 @@ bool RenderingSystem::Reinitialize(const NativeSurface& surface) {
         // ResizeBuffers leaves the old swap chain intact on failure. Restore its view so
         // the next resize attempt can release it again and retry cleanly.
         for (const auto& renderPass : renderPasses_) {
-            if (!renderPass->Reinitialize(resourceManager, renderingContext_, *resources_)) {
+            if (!renderPass->Reinitialize(resourceManager, renderingContext_, resources_)) {
                 spdlog::error("Failed to restore pass resources after resize failure");
             }
         }
         return false;
     }
-    resources_->screenWith = surface.width;
-    resources_->screenHeight = surface.height;
+    resources_.screenWith = surface.width;
+    resources_.screenHeight = surface.height;
     for (const auto& renderPass : renderPasses_) {
-        if (!renderPass->Reinitialize(resourceManager, renderingContext_, *resources_)) {
+        if (!renderPass->Reinitialize(resourceManager, renderingContext_, resources_)) {
             spdlog::error("Rendering pass failed to recreate resources after resize");
             return false;
         }
@@ -52,14 +52,16 @@ bool RenderingSystem::Reinitialize(const NativeSurface& surface) {
 
 void RenderingSystem::InitializePasses(const uint32_t screenWidth, const uint32_t screenHeight) {
     auto& resourceManager = renderingContext_.GetResourceManager();
-    resources_ = std::make_unique<RenderingResources>(screenWidth, screenHeight, resourceManager);
+    resources_ = RenderingResources(screenWidth, screenHeight);
+    resources_.Initialize(resourceManager);
+    
     renderPasses_.push_back(std::make_unique<ShadowCSMPass>());
     renderPasses_.push_back(std::make_unique<GBufferPass>());
     renderPasses_.push_back(std::make_unique<LightPass>());
     renderPasses_.push_back(std::make_unique<PresentPass>());
 
     for (const auto& renderPass : renderPasses_) {
-        renderPass->Initialize(resourceManager, renderingContext_, *resources_);
+        renderPass->Initialize(resourceManager, renderingContext_, resources_);
     }
 }
 
@@ -68,23 +70,21 @@ void RenderingSystem::RenderFrame() {
         return;
     }
     renderingContext_.ClearState();
-    resources_->BindCBuffers(renderingContext_);
+    resources_.BindCBuffers(renderingContext_);
     renderingContext_.BindSamplers();
 
     for (const auto& renderPass : renderPasses_) {
-        renderPass->Render(world_, renderingContext_, *resources_);
+        renderPass->Render(world_, renderingContext_, resources_);
         renderingContext_.ClearHazardousState();
     }
 }
 
 RenderingSystem::~RenderingSystem() {
-    if (!resources_) {
-        return;
-    }
     renderingContext_.ClearState();
     for (const auto& renderPass : renderPasses_) {
-        renderPass->Destroy(renderingContext_.GetResourceManager(), renderingContext_, *resources_);
+        renderPass->Destroy(renderingContext_.GetResourceManager(), renderingContext_, resources_);
     }
+    resources_.Destroy(renderingContext_.GetResourceManager());
 }
 
 

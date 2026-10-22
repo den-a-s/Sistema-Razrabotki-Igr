@@ -36,6 +36,7 @@ struct BufferDesc
 
 struct GpuBuffer
 {
+    BufferType type = BufferType::Vertex;
     uint32_t size = 0;
     uint32_t stride = 0;
     ComPtr<ID3D11Buffer> buffer;

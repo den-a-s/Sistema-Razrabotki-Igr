@@ -65,8 +65,7 @@ struct ENGINE_API ShaderContext {
     ComPtr<ID3DBlob> blob;
     ShaderType type;
     ShaderLayoutHandle layoutHandle;
-
-    // todo make a proper destructor
+    
     DXShader shader;
 
     // debug only, later we'll add correctness checks based on names and slots

@@ -32,7 +32,7 @@ private:
 
     RenderingContext renderingContext_{};
     RenderWorld world_{};
-    std::unique_ptr<RenderingResources> resources_;
+    RenderingResources resources_{0, 0};
     std::vector<std::unique_ptr<RenderPass>> renderPasses_{};
     bool ready_ = false;
 };

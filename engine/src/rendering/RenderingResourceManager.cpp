@@ -109,7 +109,100 @@ ShaderHandle RenderingResourceManager::RegisterCompiledShader(const CompiledShad
 }
 
 bool RenderingResourceManager::DestroyShader(const ShaderHandle shaderHandle) {
+    // Material-owned shaders are released by DestroyMaterial.
+    for (const auto& [id, instanceHandle] : defaultInstances_) {
+        const auto* instance = materialInstances_.TryGet(instanceHandle);
+        if (!instance) continue;
+        const auto* material = materials_.TryGet(instance->material);
+        if (material && (material->shaders.shadowPassVS == shaderHandle ||
+                         material->shaders.gBufferPassVS == shaderHandle ||
+                         material->shaders.gBufferPassPS == shaderHandle)) return false;
+    }
     return shaders_.Remove(shaderHandle);
+}
+
+MaterialHandle RenderingResourceManager::CreateMaterial(const MaterialDesc& desc) {
+    constexpr uint8_t knownHooks = static_cast<uint8_t>(MaterialHook::GBufferVS) |
+        static_cast<uint8_t>(MaterialHook::GBufferPS) | static_cast<uint8_t>(MaterialHook::ShadowVS);
+    if ((static_cast<uint8_t>(desc.hooks) & ~knownHooks) ||
+        (desc.hooks != MaterialHook::None && desc.shaderFile.empty()) ||
+        (desc.defaults.albedoTexture && !textures_.Contains(desc.defaults.albedoTexture)) ||
+        (desc.defaults.customBuffer && (!buffers_.Contains(desc.defaults.customBuffer) ||
+            buffers_.Get(desc.defaults.customBuffer).type != BufferType::Constant))) return {};
+
+    ShaderSet shaders{};
+    auto compile = [&](MaterialHook hook, ShaderType type, const char* define, ShaderHandle& target) {
+        if (!HasHook(desc.hooks, hook)) return true;
+        const auto path = AssetPathResolver::ResolveShader({
+            .path = AssetPathResolver::DefaultPath(std::filesystem::path(desc.shaderFile).string(), AssetKind::Shader)});
+        auto compiled = ShaderContext::CompileCpu(path, type, {.defines = {{define, "1"}, {"MATERIAL_HAS_HOOK", "1"}}});
+        if (!compiled) return false;
+        target = RegisterCompiledShader(*compiled);
+        return static_cast<bool>(target);
+    };
+    if (!compile(MaterialHook::ShadowVS, ShaderType::Vertex, "MATERIAL_SHADOW_VS", shaders.shadowPassVS) ||
+        !compile(MaterialHook::GBufferVS, ShaderType::Vertex, "MATERIAL_GBUFFER_VS", shaders.gBufferPassVS) ||
+        !compile(MaterialHook::GBufferPS, ShaderType::Pixel, "MATERIAL_GBUFFER_PS", shaders.gBufferPassPS)) {
+        shaders_.Remove(shaders.shadowPassVS);
+        shaders_.Remove(shaders.gBufferPassVS);
+        shaders_.Remove(shaders.gBufferPassPS);
+        return {};
+    }
+    Material material{.shaders = shaders, .defaultParameters = desc.defaults, .instanceCount = 1};
+    const auto handle = materials_.Add(std::move(material));
+    const auto instance = materialInstances_.Add(MaterialInstance{handle, desc.defaults});
+    defaultInstances_.emplace(handle.id, instance);
+    return handle;
+}
+
+bool RenderingResourceManager::DestroyMaterial(const MaterialHandle handle) {
+    const auto* material = materials_.TryGet(handle);
+    if (!material || material->instanceCount != 1) return false;
+    const auto shaders = material->shaders;
+    materialInstances_.Remove(defaultInstances_.at(handle.id));
+    defaultInstances_.erase(handle.id);
+    materials_.Remove(handle);
+    shaders_.Remove(shaders.shadowPassVS);
+    shaders_.Remove(shaders.gBufferPassVS);
+    shaders_.Remove(shaders.gBufferPassPS);
+    return true;
+}
+
+MaterialInstanceHandle RenderingResourceManager::GetDefaultMaterialInstance(const MaterialHandle handle) const {
+    if (!materials_.Contains(handle)) return {};
+    return defaultInstances_.at(handle.id);
+}
+
+MaterialInstanceHandle RenderingResourceManager::CreateMaterialInstance(const MaterialHandle handle) {
+    auto* material = materials_.TryGet(handle);
+    if (!material) return {};
+    ++material->instanceCount;
+    return materialInstances_.Add(MaterialInstance{handle, material->defaultParameters});
+}
+
+bool RenderingResourceManager::SetMaterialInstanceParameters(const MaterialInstanceHandle handle,
+                                                               const MaterialParameters& parameters) {
+    auto* instance = materialInstances_.TryGet(handle);
+    if (!instance || (parameters.albedoTexture && !textures_.Contains(parameters.albedoTexture)) ||
+        (parameters.customBuffer && (!buffers_.Contains(parameters.customBuffer) ||
+            buffers_.Get(parameters.customBuffer).type != BufferType::Constant))) return false;
+    instance->parameters = parameters;
+    return true;
+}
+
+bool RenderingResourceManager::DestroyMaterialInstance(const MaterialInstanceHandle handle) {
+    auto* instance = materialInstances_.TryGet(handle);
+    if (!instance || defaultInstances_.at(instance->material.id) == handle) return false;
+    --materials_.Get(instance->material).instanceCount;
+    return materialInstances_.Remove(handle);
+}
+
+const Material* RenderingResourceManager::TryGetMaterial(const MaterialHandle handle) const {
+    return materials_.TryGet(handle);
+}
+
+const MaterialInstance* RenderingResourceManager::TryGetMaterialInstance(const MaterialInstanceHandle handle) const {
+    return materialInstances_.TryGet(handle);
 }
 
 BufferHandle RenderingResourceManager::CreateBuffer(const BufferDesc& desc, const void* initialData) {
@@ -152,6 +245,7 @@ BufferHandle RenderingResourceManager::CreateBuffer(const BufferDesc& desc, cons
     data.pSysMem = initialData;
 
     GpuBuffer result;
+    result.type = desc.type;
     result.size = dxDesc.ByteWidth;
     result.stride = desc.stride;
 

@@ -1,6 +1,7 @@
 #include <engine/rendering/passes/ShadowPass.hpp>
 
 #include <cmath>
+#include <engine/rendering/MaterialDrawList.hpp>
 
 namespace engine {
 namespace {
@@ -111,7 +112,8 @@ CascadeInfo GetCascadeData(Vector3 lightDirection, const FPSCamera& camera) {
 
 void ShadowCSMPass::Initialize(RenderingResourceManager& resourceManager, RenderingContext&,
                                RenderingResources& resources) {
-    vertexShader_ = resourceManager.CompileShader(L"engine/ShadowCSMPass.hlsl", ShaderType::Vertex);
+    vertexShader_ = resourceManager.CompileShader(L"engine/MaterialTemplate.hlsl", ShaderType::Vertex,
+        {.defines = {{"MATERIAL_SHADOW_VS"}}});
     geometryShader_ = resourceManager.CompileShader(L"engine/ShadowCSMPass.hlsl", ShaderType::Geometry);
     const TextureDesc shadowTextureDesc{
         .width = mapSize, .height = mapSize, .arraySize = 4,
@@ -135,8 +137,8 @@ void ShadowCSMPass::Render(RenderWorld& world, RenderingContext& context, Render
     context.SetRasterizerState(RasterizerState::CullBackWithBias);
     context.ClearDepthView(resources.shadowTexture);
     context.SetRenderTargets({TextureHandle{}}, resources.shadowTexture);
-    context.SetShader(vertexShader_);
     context.SetShader(geometryShader_);
+    context.GetDeviceContext()->PSSetShader(nullptr, nullptr, 0);
     context.SetDepthState(DepthState::ReadWrite);
 
     world.BindDirectionalLightView(context, resources);
@@ -145,13 +147,25 @@ void ShadowCSMPass::Render(RenderWorld& world, RenderingContext& context, Render
         data = resources.cascadeInfo.bufferData;
     });
 
-    for (const auto& ri : world.renderItems) {
-        resources.materialCBuffer.Update(context, [&](MaterialBufferData& data){
-            data.specularColor = ri.material.specularColor;
-            data.shininess = ri.material.shininess;
-            data.specialType = ri.material.specialType;
-        });
-
+    const auto draws = BuildMaterialDrawList(world, context.GetResourceManager(), true, vertexShader_);
+    ShaderHandle boundVS{};
+    MaterialInstanceHandle boundInstance{};
+    for (const auto& draw : draws) {
+        if (draw.vertexShader != boundVS) {
+            context.SetShader(draw.vertexShader);
+            boundVS = draw.vertexShader;
+        }
+        if (draw.item->materialInstance != boundInstance) {
+            const auto& params = draw.instance->parameters;
+            resources.materialCBuffer.Update(context, [&](MaterialBufferData& data){
+                data.specularColor = params.parameters.specularColor;
+                data.shininess = params.parameters.shininess;
+            });
+            if (params.customBuffer) context.BindCBuffer(BindSlots::CBuffer::MaterialCustomBuffer, params.customBuffer);
+            else context.UnbindCBuffer(BindSlots::CBuffer::MaterialCustomBuffer);
+            boundInstance = draw.item->materialInstance;
+        }
+        const auto& ri = *draw.item;
         resources.objectCBuffer.Update(context, [&](ObjectBufferData& data){
             data.worldMatrix = ri.worldMatrix;
             data.normalMatrix = ri.worldMatrix.Invert().Transpose();

@@ -14,6 +14,7 @@ set(ENGINE_PUBLIC_HEADERS
     include/engine/engine.hpp
     include/engine/rendering/FPSCamera.hpp
     include/engine/rendering/GraphicalState.hpp
+    include/engine/rendering/MaterialDrawList.hpp
     include/engine/rendering/passes/GBufferPass.hpp
     include/engine/rendering/passes/LightPass.hpp
     include/engine/rendering/passes/PresentPass.hpp
@@ -26,6 +27,7 @@ set(ENGINE_PUBLIC_HEADERS
     include/engine/rendering/RenderingSystem.hpp
     include/engine/rendering/resources/BindSlot.hpp
     include/engine/rendering/resources/Buffer.hpp
+    include/engine/rendering/resources/Material.hpp
     include/engine/rendering/resources/RenderedMesh.hpp
     include/engine/rendering/resources/ShaderContext.hpp
     include/engine/rendering/resources/Texture.hpp
@@ -66,9 +68,13 @@ set(ENGINE_SHADERS
     shaders/Common.hlsl
     shaders/DirectionalLightVS.hlsl
     shaders/GBufferPass.hlsl
+    shaders/GBufferVS.hlsl
+    shaders/GBufferPS.hlsl
     shaders/PresentPass.hlsl
     shaders/LightPass.hlsl
+    shaders/MaterialTemplate.hlsl
     shaders/ShadowCSMPass.hlsl
+    shaders/ShadowVS.hlsl
 )
 
 # Keep shaders visible in IDE projects without invoking Visual Studio's HLSL compiler.
@@ -193,7 +199,7 @@ set(ENGINE_CORE_HEADERS
     include/engine/assets/AssetSystem.hpp
     include/engine/assets/AssetTable.hpp
     include/engine/assets/AssetTypes.hpp
-    src/assets/AssetPipeline.hpp
+    include/engine/assets/AssetPipeline.hpp
     include/engine/core/CoreEvents.hpp
     include/engine/core/FrameContext.hpp
     include/engine/core/Subsystem.hpp

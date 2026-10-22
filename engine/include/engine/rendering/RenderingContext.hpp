@@ -48,6 +48,7 @@ struct ENGINE_API RenderingContext {
     void RawDraw(uint32_t vertexCount, uint32_t baseVertex = 0) const;
     void DrawMesh(MeshHandle h);
     void BindCBuffer(BindSlot slot, BufferHandle h);
+    void UnbindCBuffer(BindSlot slot);
     void SetRenderTargets(std::initializer_list<TextureHandle> targets, TextureHandle depth,
                           bool depthReadOnly = false);
     void SetShaderResources(BindSlot slot, TextureHandle h);

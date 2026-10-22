@@ -3,9 +3,11 @@
 #include <span>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <engine/engine_export.hpp>
 
 #include <engine/rendering/resources/Buffer.hpp>
+#include <engine/rendering/resources/Material.hpp>
 #include <engine/core/HandleMap.hpp>
 #include <engine/rendering/resources/RenderedMesh.hpp>
 #include <engine/rendering/resources/ShaderContext.hpp>
@@ -32,6 +34,15 @@ struct ENGINE_API RenderingResourceManager {
     /// Empty handle when the device refused the bytecode.
     ShaderHandle RegisterCompiledShader(const CompiledShader& compiled);
     bool DestroyShader(ShaderHandle shaderHandle);
+    /// Compiles declared hooks and creates a default instance. Empty handle on failure.
+    MaterialHandle CreateMaterial(const MaterialDesc& desc);
+    bool DestroyMaterial(MaterialHandle material);
+    [[nodiscard]] MaterialInstanceHandle GetDefaultMaterialInstance(MaterialHandle material) const;
+    [[nodiscard]] MaterialInstanceHandle CreateMaterialInstance(MaterialHandle material);
+    bool SetMaterialInstanceParameters(MaterialInstanceHandle instance, const MaterialParameters& parameters);
+    bool DestroyMaterialInstance(MaterialInstanceHandle instance);
+    [[nodiscard]] const Material* TryGetMaterial(MaterialHandle material) const;
+    [[nodiscard]] const MaterialInstance* TryGetMaterialInstance(MaterialInstanceHandle instance) const;
     
     [[nodiscard]] BufferHandle CreateBuffer(const BufferDesc& desc, const void* initialData);
 
@@ -85,6 +96,9 @@ private:
     HandleMap<GpuBuffer> buffers_{};
     HandleMap<ShaderContext> shaders_{};
     HandleMap<RenderedMesh> meshes_{};
+    HandleMap<Material> materials_{};
+    HandleMap<MaterialInstance> materialInstances_{};
+    std::unordered_map<uint32_t, MaterialInstanceHandle> defaultInstances_{}; //I dont particularly like idea of the map here... But is should be fine as it's not in render path
     ComPtr<ID3D11Device> device_{};
     InputLayoutCache inputLayoutCache_;
 };

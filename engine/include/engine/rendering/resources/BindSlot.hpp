@@ -51,7 +51,7 @@ struct BindSlots {
     struct CBuffer {
         constexpr static BindSlot Frame{0, shaderStageAll};
         constexpr static BindSlot View{1, shaderStageAll};
-        constexpr static BindSlot Material{2, ShaderStage::Pixel};
+        constexpr static BindSlot Material{2, shaderStageAll};
         constexpr static BindSlot Object{3, shaderStageAll};
         //constexpr static constexpr static BindSlot ObjectNormal{4, shaderStageAll};
         constexpr static BindSlot ShadowCascades{4, shaderStageAll};
@@ -59,6 +59,8 @@ struct BindSlots {
         constexpr static BindSlot Pass0{5, shaderStageAll}; //Light buffers for light
         constexpr static BindSlot Pass1{6, shaderStageAll};
         constexpr static BindSlot Pass2{7, shaderStageAll};
+
+        constexpr static BindSlot MaterialCustomBuffer{8, shaderStageAll};
     };
 
     struct Texture {

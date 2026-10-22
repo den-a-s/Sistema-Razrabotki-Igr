@@ -153,7 +153,7 @@ void RenderingContext::RawDraw(const uint32_t vertexCount, const uint32_t baseVe
 }
 
 void RenderingContext::DrawMesh(const MeshHandle h) {
-    BindMesh(h);
+    BindMesh(h);//todo: always rebinds mesh, needs to rebind mesh only if changed
     const auto& mesh = resourceManager_.meshes_.Get(h);
     deviceContext_->DrawIndexed(mesh.indexCount, 0, 0);
 }
@@ -178,6 +178,16 @@ void RenderingContext::BindCBuffer(const BindSlot slot, const BufferHandle h) {
     if (slot.HasStage(ShaderStage::Compute)) {
         deviceContext_->CSSetConstantBuffers(slot.id_, 1, buffer.buffer.GetAddressOf());
     }
+}
+
+void RenderingContext::UnbindCBuffer(const BindSlot slot) {
+    ID3D11Buffer* empty = nullptr;
+    if (slot.HasStage(ShaderStage::Vertex)) deviceContext_->VSSetConstantBuffers(slot.id_, 1, &empty);
+    if (slot.HasStage(ShaderStage::Pixel)) deviceContext_->PSSetConstantBuffers(slot.id_, 1, &empty);
+    if (slot.HasStage(ShaderStage::Geometry)) deviceContext_->GSSetConstantBuffers(slot.id_, 1, &empty);
+    if (slot.HasStage(ShaderStage::Hull)) deviceContext_->HSSetConstantBuffers(slot.id_, 1, &empty);
+    if (slot.HasStage(ShaderStage::Domain)) deviceContext_->DSSetConstantBuffers(slot.id_, 1, &empty);
+    if (slot.HasStage(ShaderStage::Compute)) deviceContext_->CSSetConstantBuffers(slot.id_, 1, &empty);
 }
 
 void RenderingContext::SetRenderTargets(const std::initializer_list<TextureHandle> targets,
