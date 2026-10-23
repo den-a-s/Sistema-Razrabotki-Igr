@@ -22,6 +22,11 @@ bool SceneRenderSubsystem::Initialize() {
         spdlog::error("SceneRenderSubsystem: needs RenderingSubsystem registered before it");
         return false;
     }
+    defaultMaterial_ = rendering_->GetResourceManager().CreateMaterial({});
+    if (!defaultMaterial_) {
+        spdlog::error("SceneRenderSubsystem: could not create the default material");
+        return false;
+    }
     whiteTexture_ = GetEngine().GetAssets().RequestTexture(BuiltinAssets::WhiteTexture);
     // Creates the pools here, so their code lives in Engine.dll rather than in whichever
     // (editor) module happens to emplace the first component.
@@ -32,13 +37,27 @@ bool SceneRenderSubsystem::Initialize() {
     return true;
 }
 
+void SceneRenderSubsystem::Shutdown() {
+    // Runs before RenderingSubsystem shuts down (registered after it), so the manager is alive.
+    RenderingResourceManager& resources = rendering_->GetResourceManager();
+    rendering_->GetWorld().renderItems.clear();
+    for (const auto& [entity, instance] : instances_) {
+        resources.DestroyMaterialInstance(instance);
+    }
+    instances_.clear();
+    resources.DestroyMaterial(defaultMaterial_);
+    defaultMaterial_ = {};
+}
+
 void SceneRenderSubsystem::Update(const FrameContext&) {
     const Scene& scene = GetEngine().GetScene();
     AssetSystem& assets = GetEngine().GetAssets();
     RenderWorld& world = rendering_->GetWorld();
+    RenderingResourceManager& resources = rendering_->GetResourceManager();
 
     UpdateCamera(scene, world);
     UpdateDirectionalLight(scene, world);
+    ReleaseStaleInstances(scene);
 
     world.renderItems.clear();
     for (const auto [entity, renderer] : scene.GetRegistry().view<MeshRenderer>().each()) {
@@ -49,12 +68,33 @@ void SceneRenderSubsystem::Update(const FrameContext&) {
         if (!mesh || !texture) {
             continue;
         }
+        // The draw list skips items without a valid instance, so every drawn entity gets one.
+        auto [it, inserted] = instances_.try_emplace(entity);
+        if (inserted) {
+            it->second = resources.CreateMaterialInstance(defaultMaterial_);
+        }
+        resources.SetMaterialInstanceParameters(it->second, MaterialParameters{
+            .albedoTexture = texture->texture,
+            .parameters = renderer.material,
+        });
         world.renderItems.push_back({
             .worldMatrix = scene.GetWorldMatrix(entity),
             .mesh = mesh->mesh,
-            .material = renderer.material,
-            .texture = texture->texture,
+            .materialInstance = it->second,
         });
+    }
+}
+
+void SceneRenderSubsystem::ReleaseStaleInstances(const Scene& scene) {
+    const auto& registry = scene.GetRegistry();
+    RenderingResourceManager& resources = rendering_->GetResourceManager();
+    for (auto it = instances_.begin(); it != instances_.end();) {
+        if (registry.valid(it->first) && registry.all_of<MeshRenderer>(it->first)) {
+            ++it;
+            continue;
+        }
+        resources.DestroyMaterialInstance(it->second);
+        it = instances_.erase(it);
     }
 }
 

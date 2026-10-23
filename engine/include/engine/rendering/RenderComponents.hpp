@@ -3,6 +3,7 @@
 #include <engine/assets/AssetHandle.hpp>
 #include <engine/assets/AssetTypes.hpp>
 #include <engine/rendering/RenderWorld.hpp>
+#include <engine/rendering/resources/Material.hpp>
 
 // Scene components the renderer understands. SceneRenderSubsystem copies them into
 // the RenderWorld every frame.
@@ -15,7 +16,8 @@ struct MeshRenderer {
     AssetHandle<MeshAsset> mesh;
     /// Empty = plain white (BuiltinAssets::WhiteTexture).
     AssetHandle<TextureAsset> texture{};
-    MaterialParameters material{DirectX::SimpleMath::Vector3{0.25f, 0.25f, 0.25f}, 32.0f, 0};
+    /// Defaults: specular 0.25 gray, shininess 32. Drawn with the default material.
+    MaterialPBRParameters material{};
 };
 
 /// Renders the scene from the entity's world position, looking along its local -Z
