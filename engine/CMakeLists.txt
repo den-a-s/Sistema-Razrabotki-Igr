@@ -162,24 +162,28 @@ set_project_warnings(engine_static)
 # --- Install (SDK layout) --------------------------------------------------
 include(GNUInstallDirs)
 
+# Component "sdk", so the portable app deploys (cmake/Deploy.cmake) leave it out.
 install(TARGETS engine
     EXPORT  EngineTargets
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT sdk
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT sdk
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT sdk
 )
 
 install(DIRECTORY include/engine
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT sdk
 )
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/include/engine/engine_export.hpp"
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/engine
+    COMPONENT sdk
 )
 
 install(EXPORT EngineTargets
     FILE      EngineTargets.cmake
     NAMESPACE Engine::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Engine
+    COMPONENT sdk
 )
 
 # --- Core kernel -------------------------------------------------------------

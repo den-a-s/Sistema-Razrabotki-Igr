@@ -14,6 +14,7 @@ project(SRI_Engine
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CompilerWarnings)
+include(Deploy)
 
 # --- Language level --------------------------------------------------------
 set(CMAKE_CXX_STANDARD 20)

@@ -121,20 +121,38 @@ function(sri_add_editor_module name)
     )
     set_project_warnings(${name})
     add_dependencies(editor ${name})
+    install(FILES "$<TARGET_FILE:${name}>" DESTINATION editor_modules COMPONENT editor)
 endfunction()
 
 add_subdirectory(modules/scene)
 
 # --- Install / deploy ------------------------------------------------------
 
-# Runs windeployqt at install time so `cmake --install` produces
-# a self-contained folder. Requires Qt 6.3+.
-qt_generate_deploy_app_script(
+# `--target deploy_editor` assembles a portable editor in
+# build/<preset>/deploy/<config>/editor (see cmake/Deploy.cmake).
+sri_add_deploy(editor LIBRARIES engine editor_core qtadvanceddocking-qt6)
+
+install(DIRECTORY
+        "${PROJECT_SOURCE_DIR}/engine/shaders"
+        "${PROJECT_SOURCE_DIR}/engine/primitives"
+    DESTINATION engine
+    COMPONENT editor
+)
+
+# Runs windeployqt at install time: Qt DLLs, plugins and qt.conf. Qt would put
+# them in bin/ by default; keep them in the root next to editor.exe instead.
+qt_generate_deploy_script(
     TARGET editor
     OUTPUT_SCRIPT deploy_script
-    NO_UNSUPPORTED_PLATFORM_ERROR
+    CONTENT "
+set(QT_DEPLOY_BIN_DIR .)
+set(QT_DEPLOY_LIB_DIR .)
+qt_deploy_runtime_dependencies(
+    EXECUTABLE \"$<TARGET_FILE:editor>\"
+    GENERATE_QT_CONF
 )
-install(SCRIPT ${deploy_script})
+")
+install(SCRIPT ${deploy_script} COMPONENT editor)
 
 # For building in IDE without running --install
 file(GENERATE
