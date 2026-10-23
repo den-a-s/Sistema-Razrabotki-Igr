@@ -3,7 +3,8 @@
 namespace engine {
 
 Matrix FPSCamera::GetProjectionMatrix() const {
-    return Matrix::CreatePerspectiveFieldOfView(fov, aspectRatio, nearPlane, farPlane);
+    // Engine uses ReverseZ, so planes are swapped
+    return Matrix::CreatePerspectiveFieldOfView(fov, aspectRatio, farPlane, nearPlane);
 }
 
 Matrix FPSCamera::GetViewMatrix() const {

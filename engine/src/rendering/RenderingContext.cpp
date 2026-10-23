@@ -18,12 +18,6 @@ RenderingContext::~RenderingContext() {
     }
 }
 
-void RenderingContext::Initialize(const uint32_t screenWidth, const uint32_t screenHeight) {
-    if (!CreateDeviceAndSwapChain(makeWindow(screenWidth, screenHeight), screenWidth, screenHeight)) {
-        spdlog::critical("RenderingContext: no device, the process cannot continue");
-        std::exit(1);
-    }
-}
 
 bool RenderingContext::Initialize(const NativeSurface& surface) {
     if (!surface.IsValid()) {
@@ -32,6 +26,19 @@ bool RenderingContext::Initialize(const NativeSurface& surface) {
     }
     return CreateDeviceAndSwapChain(static_cast<HWND>(surface.windowHandle), surface.width, surface.height);
 }
+
+bool RenderingContext::Reinitialize(const NativeSurface& surface) const {
+    if (!swapChain_ || !surface.IsValid()) {
+        return false;
+    }
+    const auto r = swapChain_->ResizeBuffers(0, surface.width, surface.height, DXGI_FORMAT_UNKNOWN, 0);
+    if (FAILED(r)) {
+        spdlog::error("Failed to resize swap chain: {:08x}", static_cast<unsigned long>(r));
+        return false;
+    }
+    return true;
+}
+
 
 bool RenderingContext::CreateDeviceAndSwapChain(const HWND hwnd, const uint32_t width, const uint32_t height) {
     const DXGI_SWAP_CHAIN_DESC swapChainDesc{
@@ -146,7 +153,7 @@ void RenderingContext::RawDraw(const uint32_t vertexCount, const uint32_t baseVe
 }
 
 void RenderingContext::DrawMesh(const MeshHandle h) {
-    BindMesh(h);
+    BindMesh(h);//todo: always rebinds mesh, needs to rebind mesh only if changed
     const auto& mesh = resourceManager_.meshes_.Get(h);
     deviceContext_->DrawIndexed(mesh.indexCount, 0, 0);
 }
@@ -171,6 +178,16 @@ void RenderingContext::BindCBuffer(const BindSlot slot, const BufferHandle h) {
     if (slot.HasStage(ShaderStage::Compute)) {
         deviceContext_->CSSetConstantBuffers(slot.id_, 1, buffer.buffer.GetAddressOf());
     }
+}
+
+void RenderingContext::UnbindCBuffer(const BindSlot slot) {
+    ID3D11Buffer* empty = nullptr;
+    if (slot.HasStage(ShaderStage::Vertex)) deviceContext_->VSSetConstantBuffers(slot.id_, 1, &empty);
+    if (slot.HasStage(ShaderStage::Pixel)) deviceContext_->PSSetConstantBuffers(slot.id_, 1, &empty);
+    if (slot.HasStage(ShaderStage::Geometry)) deviceContext_->GSSetConstantBuffers(slot.id_, 1, &empty);
+    if (slot.HasStage(ShaderStage::Hull)) deviceContext_->HSSetConstantBuffers(slot.id_, 1, &empty);
+    if (slot.HasStage(ShaderStage::Domain)) deviceContext_->DSSetConstantBuffers(slot.id_, 1, &empty);
+    if (slot.HasStage(ShaderStage::Compute)) deviceContext_->CSSetConstantBuffers(slot.id_, 1, &empty);
 }
 
 void RenderingContext::SetRenderTargets(const std::initializer_list<TextureHandle> targets,

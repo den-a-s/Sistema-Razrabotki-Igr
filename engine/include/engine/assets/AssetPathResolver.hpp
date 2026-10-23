@@ -1,5 +1,9 @@
 #pragma once
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #include <algorithm>
 #include <array>
 #include <filesystem>
@@ -51,10 +55,11 @@ public:
         return path / L"texture.png";
     }
 
-    /// "shaders/LightPass" -> <root>/engine/shaders/LightPass.hlsl (extension may be given).
+    /// Names are game/..., engine/... or the legacy shaders/... (engine).
+    /// The executable directory is the common root for files and generated source locations.
     [[nodiscard]] static std::filesystem::path ResolveShader(const AssetDesc& desc) {
         std::filesystem::path path = MakeAbsolute(desc.path);
-        if (!HasExtension(path, L".hlsl")) {
+        if (path.extension().empty()) {
             path += L".hlsl";
         }
         return path;
@@ -63,11 +68,16 @@ public:
     /// Default on-disk location for a kind when the caller gave only a logical name.
     [[nodiscard]] static std::filesystem::path DefaultPath(std::string_view name, AssetKind kind) {
         if (kind == AssetKind::Shader) {
-            constexpr std::string_view prefix = "shaders/";
-            if (name.starts_with(prefix)) {
-                name.remove_prefix(prefix.size());
+            if (name.starts_with("engine/")) {
+                return std::filesystem::path("engine") / "shaders" / std::filesystem::path(name.substr(7));
             }
-            return std::filesystem::path("engine") / "shaders" / std::filesystem::path(name);
+            if (name.starts_with("game/")) {
+                return std::filesystem::path("game") / "shaders" / std::filesystem::path(name.substr(5));
+            }
+            if (name.starts_with("shaders/")) {
+                return std::filesystem::path("engine") / "shaders" / std::filesystem::path(name.substr(8));
+            }
+            return std::filesystem::path("game") / "shaders" / std::filesystem::path(name);
         }
         return std::filesystem::path(name);
     }

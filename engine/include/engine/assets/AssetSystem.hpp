@@ -56,17 +56,26 @@ public:
     /// failed re-load recycled the record. Empty resource on failure.
     entt::resource<MeshAsset> LoadMesh(std::string_view name, bool centerOnLoad = false);
     entt::resource<TextureAsset> LoadTexture(std::string_view name);
-    /// Compiles one file for one stage and merges it into the ShaderAsset of that name;
-    /// call again with another stage to add it to the same record.
-    entt::resource<ShaderAsset> LoadShader(std::string_view name, ShaderType stage);
+    /// Names use game/... or engine/...; each stage/entry point/define set is a separate asset.
+    entt::resource<ShaderAsset> LoadShader(std::string_view name, ShaderType stage,
+                                          ShaderCompileOptions options = {});
+    /// Generated HLSL with a virtual shader path for relative includes and diagnostics.
+    entt::resource<ShaderAsset> LoadShaderSource(std::string_view virtualPath, std::string source,
+                                                ShaderType stage, ShaderCompileOptions options = {});
 
     /// Starts loading without blocking. Deduplicated: repeated requests for a Loading or
     /// Ready name return the same handle. Invalid() when the name hashes onto a different
     /// asset (logged) ; a Failed attempt must be re-requested explicitly.
     AssetHandle<MeshAsset> RequestMesh(std::string_view name, bool centerOnLoad = false);
     AssetHandle<TextureAsset> RequestTexture(std::string_view name);
+    /// Shader handles identify a single stage/entry point/define set. Use the
+    /// returned handle with IsReady() / Peek() to query asynchronous compilation.
+    AssetHandle<ShaderAsset> RequestShader(std::string_view name, ShaderType stage,
+                                          ShaderCompileOptions options = {});
+    AssetHandle<ShaderAsset> RequestShaderSource(std::string_view virtualPath, std::string source,
+                                                ShaderType stage, ShaderCompileOptions options = {});
 
-    /// Current state of a name; Unloaded when the name was never requested.
+    /// Current state of a mesh or texture name; shader variants use their request handle.
     template <typename T>
     [[nodiscard]] AssetState GetState(std::string_view name) const {
         const AssetHandle<T> handle = Table<T>().Find(NormalizeName(name));
@@ -75,6 +84,7 @@ public:
     }
 
     /// The loaded asset, or an empty resource while it is not Ready.
+    /// For shaders, use the handle overload below to distinguish variants.
     template <typename T>
     [[nodiscard]] entt::resource<T> Peek(std::string_view name) {
         return Peek<T>(Table<T>().Find(NormalizeName(name)));
@@ -99,6 +109,7 @@ public:
     }
 
 private:
+    AssetHandle<ShaderAsset> RequestShaderVariant(AssetDesc&& desc);
     template <typename T>
     AssetHandle<T> Request(AssetDesc&& desc);
 

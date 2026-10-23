@@ -25,16 +25,16 @@ using Microsoft::WRL::ComPtr;
  * Simple thin wrapper around DX11 Context, helps to set shaders and resources via Handles
  * To simplify architecture we are keeping most resources bound during render pass
  * Each resource has reserved slot so that's no problem.
- * If pass requires to reuse some out-resources as in-resources, it must inbind all out-resources explicitly or wise-versa
+ * If pass requires to reuse some out-resources as in-resources, it must unbind all out-resources explicitly and wise-versa
  */
 struct ENGINE_API RenderingContext {
     RenderingContext();
     ~RenderingContext();
-
-    /// Legacy standalone path, creates its own window; prefer the NativeSurface overload.
-    void Initialize(uint32_t screenWidth = 1000, uint32_t screenHeight = 600);
+    
     /// Device and swap chain onto a host-owned window; false when there is nothing to render into.
     bool Initialize(const NativeSurface& surface);
+    /// Reinit everything for new differently sized surface
+    bool Reinitialize(const NativeSurface& surface) const;
 
     [[nodiscard]] RenderingResourceManager& GetResourceManager();
     [[nodiscard]] ID3D11Device* GetDevice() const;
@@ -48,6 +48,7 @@ struct ENGINE_API RenderingContext {
     void RawDraw(uint32_t vertexCount, uint32_t baseVertex = 0) const;
     void DrawMesh(MeshHandle h);
     void BindCBuffer(BindSlot slot, BufferHandle h);
+    void UnbindCBuffer(BindSlot slot);
     void SetRenderTargets(std::initializer_list<TextureHandle> targets, TextureHandle depth,
                           bool depthReadOnly = false);
     void SetShaderResources(BindSlot slot, TextureHandle h);
@@ -59,7 +60,7 @@ struct ENGINE_API RenderingContext {
     void SetGraphicalState(GraphicalState state) const;
     void ClearState();
     void ClearHazardousState() const;
-    void ClearDepthView(TextureHandle h, std::optional<float> depth = 1.f,
+    void ClearDepthView(TextureHandle h, std::optional<float> depth = 0.f, // ReverseZ, so 0 depth is farthest
                         std::optional<UINT> stencil = std::nullopt);
     void ClearRenderTargetView(TextureHandle h,
                                std::array<float, 4> color = {0.f, 0.f, 0.f, 0.f});

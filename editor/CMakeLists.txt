@@ -57,6 +57,14 @@ set_target_properties(editor PROPERTIES
 
 set_project_warnings(editor)
 
+# Shader paths are resolved beside the executable, just like the game assets.
+add_custom_command(TARGET editor POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:editor>/engine"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${PROJECT_SOURCE_DIR}/engine/shaders" "$<TARGET_FILE_DIR:editor>/engine/shaders"
+    VERBATIM
+)
+
 # --- Runtime DLLs (Windows) ------------------------------------------------
 # Engine.dll already lands in the same bin/ directory via the global output
 # settings; this additionally copies Qt and vcpkg DLLs next to the executable

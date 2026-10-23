@@ -157,7 +157,7 @@ HRESULT Texture::CreateDefaultDSV(ID3D11Device* device) {
         return r;
     }
 
-    dxDesc.Flags = D3D11_DSV_READ_ONLY_DEPTH | D3D11_DSV_READ_ONLY_STENCIL;
+    dxDesc.Flags = D3D11_DSV_READ_ONLY_DEPTH;
     return device->CreateDepthStencilView(
         resource_.Get(),
         &dxDesc,

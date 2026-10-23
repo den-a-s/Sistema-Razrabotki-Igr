@@ -5,11 +5,32 @@
 
 namespace engine {
 
-HWND makeWindow(const std::uint32_t screenWidth, const uint32_t screenHeight) {
-    WNDPROC windowFunction = [](HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)-> LRESULT {
+//this function is even shittier than you think, it uses local statics, hence only one window could be handled properly
+HWND makeWindow(const std::uint32_t screenWidth, const uint32_t screenHeight, WindowResizedCallback * resizedCallback) {
+    static WindowResizedCallback * callback = resizedCallback;
+    
+    WNDPROC windowFunction = [](HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)-> LRESULT{
+        static int newWidth = 0;
+        static int newHeight = 0;
+        static bool isResizing = false;
         if (message == WM_KEYDOWN) {
             if (static_cast<unsigned int>(wparam) == 27) PostQuitMessage(0);
             return 0;
+        } else if (message == WM_ENTERSIZEMOVE) {
+            isResizing = true;
+        } else if (message == WM_SIZE) {
+            newWidth = LOWORD(lparam);
+            newHeight = HIWORD(lparam);
+            if (!isResizing && callback) {
+                callback(newWidth, newHeight);
+            }
+        } else if (message == WM_EXITSIZEMOVE) {
+            if (isResizing) {
+                isResizing = false;
+                if (callback) {
+                    callback(newWidth, newHeight);
+                }
+            }
         }
         return DefWindowProc(hwnd, message, wparam, lparam);
     };
@@ -48,7 +69,8 @@ HWND makeWindow(const std::uint32_t screenWidth, const uint32_t screenHeight) {
 
     auto hwnd = CreateWindowEx(windowExStyle, applicationName, applicationName,
                                windowStyle,
-                               0, 0, windowRect.right - windowRect.left, windowRect.bottom - windowRect.top, nullptr, nullptr,
+                               0, 0, windowRect.right - windowRect.left, windowRect.bottom - windowRect.top, nullptr,
+                               nullptr,
                                hinstance, nullptr);
     if (hwnd == nullptr) {
         std::cout << "CreateWindowEx() failed: " << '\n' << GetLastError() << '\n';

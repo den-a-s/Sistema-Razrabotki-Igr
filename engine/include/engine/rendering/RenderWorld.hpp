@@ -7,6 +7,8 @@
 #include <engine/rendering/RenderingContext.hpp>
 #include <engine/rendering/RenderingResources.hpp>
 
+#include "resources/Material.hpp"
+
 namespace engine {
 using DirectX::SimpleMath::Vector3;
 using DirectX::SimpleMath::Matrix;
@@ -30,17 +32,10 @@ struct LightInfo {
     } lightParameters;
 };
 
-struct MaterialParameters {
-    Vector3 specularColor;
-    float shininess;
-    uint32_t specialType;
-};
-
 struct RenderItem {
     Matrix worldMatrix;
     MeshHandle mesh;
-    MaterialParameters material;
-    TextureHandle texture;
+    MaterialInstanceHandle materialInstance;
 };
 
 struct RenderWorld {

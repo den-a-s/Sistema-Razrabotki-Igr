@@ -29,8 +29,12 @@ using DirectX::SimpleMath::Vector4;
 struct SceneObject {
     Matrix transform;
     engine::MeshHandle mesh;
-    engine::TextureHandle texture;
-    engine::MaterialParameters material;
+    engine::MaterialInstanceHandle materialInstance;
+};
+
+struct alignas(16) EnchantmentBufferData {
+    float time;
+    float padding[3]{};
 };
 
 engine::MeshHandle MakeGroundMesh(engine::RenderingResourceManager& resourceManager) {
@@ -148,8 +152,7 @@ void FillRenderWorld(engine::RenderWorld& world, const std::vector<SceneObject>&
         world.renderItems.push_back({
             .worldMatrix = object.transform,
             .mesh = object.mesh,
-            .material = object.material,
-            .texture = object.texture
+            .materialInstance = object.materialInstance
         });
     }
 }
@@ -188,7 +191,8 @@ void UpdateLights(engine::RenderWorld& world, float time) {
 /// arrive through the AssetSystem in the background.
 class ExampleGameLogic final : public engine::Subsystem {
 public:
-    explicit ExampleGameLogic(HWND window) : window_(window) {}
+    explicit ExampleGameLogic(HWND window) : window_(window) {
+    }
 
     [[nodiscard]] std::string_view GetName() const override {
         return "ExampleGameLogic";
@@ -250,12 +254,14 @@ public:
                 .intensity = 7.0f,
                 .range = 10.0f,
                 .type = engine::LightInfo::Spot,
-                .lightParameters = {.spotLight = {
-                    .innerAngle = std::cos(Pi / 12.0f),
-                    .outerAngle = std::cos(firstSpotOuterHalfAngle),
-                    .range = 10.0f,
-                    .boundingBox = firstSpotBoundingBox
-                }}
+                .lightParameters = {
+                    .spotLight = {
+                        .innerAngle = std::cos(Pi / 12.0f),
+                        .outerAngle = std::cos(firstSpotOuterHalfAngle),
+                        .range = 10.0f,
+                        .boundingBox = firstSpotBoundingBox
+                    }
+                }
             },
             {
                 .position = Vector3{5.0f, 4.5f, 0.0f},
@@ -264,16 +270,31 @@ public:
                 .intensity = 6.0f,
                 .range = 8.0f,
                 .type = engine::LightInfo::Spot,
-                .lightParameters = {.spotLight = {
-                    .innerAngle = std::cos(Pi / 10.0f),
-                    .outerAngle = std::cos(secondSpotOuterHalfAngle),
-                    .range = 8.0f,
-                    .boundingBox = secondSpotBoundingBox
-                }}
+                .lightParameters = {
+                    .spotLight = {
+                        .innerAngle = std::cos(Pi / 10.0f),
+                        .outerAngle = std::cos(secondSpotOuterHalfAngle),
+                        .range = 8.0f,
+                        .boundingBox = secondSpotBoundingBox
+                    }
+                }
             }
         };
 
         groundTexture_ = MakeCheckerTexture(resources);
+        defaultMaterial_ = resources.CreateMaterial({});
+        groundMaterial_ = resources.CreateMaterial({
+            .shaderFile = L"game/GroundMaterial.hlsl",
+            .hooks = engine::MaterialHook::GBufferVS | engine::MaterialHook::GBufferPS |
+                engine::MaterialHook::ShadowVS
+        });
+        enchantedMaterial_ = resources.CreateMaterial({
+            .shaderFile = L"game/EnchantedCube.hlsl",
+            .hooks = engine::MaterialHook::GBufferVS | engine::MaterialHook::GBufferPS |
+                engine::MaterialHook::ShadowVS
+        });
+        if (!defaultMaterial_ || !groundMaterial_ || !enchantedMaterial_) return false;
+        enchantmentBuffer_ = resources.CreateConstantBuffer<EnchantmentBufferData>();
         lightMarkerMesh_ = engine::ugly_utils::FromRawMesh(
             resources, engine::ugly_utils::CreateSphere(0.15f));
         lightMarkerTextures_ = {
@@ -285,8 +306,15 @@ public:
         objects_.push_back({
             .transform = Matrix::Identity,
             .mesh = MakeGroundMesh(resources),
-            .texture = groundTexture_,
-            .material = {Vector3{0.08f, 0.08f, 0.08f}, 24.0f, 0}
+            .materialInstance = MakeInstance(groundMaterial_, groundTexture_,
+                {Vector3{0.08f, 0.08f, 0.08f}, 24.0f})
+        });
+        cubeIndex_ = objects_.size();
+        objects_.push_back({
+            .transform = Matrix::CreateTranslation(0.0f, 3.8f, 0.0f),
+            .mesh = engine::ugly_utils::FromRawMesh(resources, engine::ugly_utils::CreateCube(1.6f, 1.6f, 1.6f)),
+            .materialInstance = MakeInstance(enchantedMaterial_, {},
+                {Vector3{0.75f, 0.48f, 0.95f}, 100.0f}, enchantmentBuffer_)
         });
 
         tableMesh_ = assets_->RequestMesh("models/Table", true);
@@ -298,6 +326,17 @@ public:
 
         CaptureMouse(window_);
         return true;
+    }
+
+    void Shutdown() override {
+        auto& resources = rendering_->GetResourceManager();
+        rendering_->GetWorld().renderItems.clear();
+        for (const auto instance : instances_) resources.DestroyMaterialInstance(instance);
+        if (enchantedMaterial_) resources.DestroyMaterial(enchantedMaterial_);
+        if (groundMaterial_) resources.DestroyMaterial(groundMaterial_);
+        if (defaultMaterial_) resources.DestroyMaterial(defaultMaterial_);
+        if (enchantmentBuffer_) resources.DestroyBuffer(enchantmentBuffer_);
+        instances_.clear();
     }
 
     void Update(const engine::FrameContext& frame) override {
@@ -316,17 +355,24 @@ public:
         }
 
         auto& world = rendering_->GetWorld();
+        const auto& surface = GetEngine().GetSurface();
+        if (surface.width > 0 && surface.height > 0) {
+            world.camera.aspectRatio = static_cast<float>(surface.width) / static_cast<float>(surface.height);
+        }
         UpdateCamera(world.camera, window_, static_cast<float>(frame.deltaSeconds));
         if (!sceneBuilt_) {
             TryBuildScene();
         }
 
         const float time = static_cast<float>(frame.simulationTimeSeconds);
+        rendering_->GetContext().UpdateCBuffer(enchantmentBuffer_, EnchantmentBufferData{time});
+        objects_[cubeIndex_].transform = Matrix::CreateRotationY(time * 0.35f) *
+            Matrix::CreateTranslation(0.0f, 3.8f + 0.16f * std::sin(time * 1.7f), 0.0f);
         if (sceneBuilt_) {
             objects_[orbitingSign_].transform = Matrix::CreateScale(1.5f) *
                 Matrix::CreateRotationY(-time * 1.2f) *
                 Matrix::CreateTranslation(std::cos(time) * 5.0f, 1.25f,
-                                         std::sin(time) * 5.0f);
+                                          std::sin(time) * 5.0f);
             objects_[bobbingHammer_].transform = Matrix::CreateScale(1.4f) *
                 Matrix::CreateRotationX(time * 1.8f) *
                 Matrix::CreateRotationY(time * 0.9f) *
@@ -347,6 +393,20 @@ public:
     }
 
 private:
+    engine::MaterialInstanceHandle MakeInstance(engine::MaterialHandle material, engine::TextureHandle texture,
+                                                engine::MaterialPBRParameters pbr,
+                                                engine::BufferHandle customBuffer = {}) {
+        auto& resources = rendering_->GetResourceManager();
+        const auto instance = resources.CreateMaterialInstance(material);
+        engine::MaterialParameters params{};
+        params.albedoTexture = texture;
+        params.parameters = pbr;
+        params.customBuffer = customBuffer;
+        resources.SetMaterialInstanceParameters(instance, params);
+        instances_.push_back(instance);
+        return instance;
+    }
+
     void TryBuildScene() {
         const auto tableMesh = assets_->Peek(tableMesh_);
         const auto signMesh = assets_->Peek(signMesh_);
@@ -359,32 +419,29 @@ private:
             return;
         }
 
-        const engine::MaterialParameters objectMaterial{
-            Vector3{0.25f, 0.25f, 0.25f}, 0.0f, 0
+        const engine::MaterialPBRParameters objectMaterial{
+            Vector3{0.25f, 0.25f, 0.25f}, 0.0f
         };
         SceneObject table{
             .transform = Matrix::CreateScale(3.5f) * Matrix::CreateTranslation(-2.5f, 0.55f, 0.0f),
             .mesh = tableMesh->mesh,
-            .texture = tableTexture->texture,
-            .material = objectMaterial
+            .materialInstance = MakeInstance(defaultMaterial_, tableTexture->texture,
+                {objectMaterial.specularColor, 64.0f})
         };
-        table.material.shininess = 64.0f;
         SceneObject sign{
             .transform = Matrix::CreateScale(3.0f) * Matrix::CreateRotationY(-0.35f) *
-                Matrix::CreateTranslation(2.5f, 1.5f, -1.0f),
+            Matrix::CreateTranslation(2.5f, 1.5f, -1.0f),
             .mesh = signMesh->mesh,
-            .texture = signTexture->texture,
-            .material = objectMaterial
+            .materialInstance = MakeInstance(defaultMaterial_, signTexture->texture,
+                {objectMaterial.specularColor, 32.0f})
         };
-        sign.material.shininess = 32.0f;
         SceneObject hammer{
             .transform = Matrix::CreateScale(2.0f) * Matrix::CreateRotationZ(-0.65f) *
-                Matrix::CreateTranslation(0.0f, 1.0f, 1.5f),
+            Matrix::CreateTranslation(0.0f, 1.0f, 1.5f),
             .mesh = hammerMesh->mesh,
-            .texture = hammerTexture->texture,
-            .material = objectMaterial
+            .materialInstance = MakeInstance(defaultMaterial_, hammerTexture->texture,
+                {objectMaterial.specularColor, 96.0f})
         };
-        hammer.material.shininess = 96.0f;
         objects_.push_back(table);
         objects_.push_back(sign);
         objects_.push_back(hammer);
@@ -401,8 +458,8 @@ private:
             objects_.push_back({
                 .transform = Matrix::Identity,
                 .mesh = lightMarkerMesh_,
-                .texture = texture,
-                .material = {Vector3{0.4f, 0.4f, 0.4f}, 96.0f, 0}
+                .materialInstance = MakeInstance(defaultMaterial_, texture,
+                    {Vector3{0.4f, 0.4f, 0.4f}, 96.0f})
             });
         }
         sceneBuilt_ = true;
@@ -413,6 +470,12 @@ private:
     engine::AssetSystem* assets_ = nullptr;
 
     engine::TextureHandle groundTexture_;
+    engine::MaterialHandle defaultMaterial_;
+    engine::MaterialHandle groundMaterial_;
+    engine::MaterialHandle enchantedMaterial_;
+    engine::BufferHandle enchantmentBuffer_;
+    size_t cubeIndex_ = 0;
+    std::vector<engine::MaterialInstanceHandle> instances_;
     engine::MeshHandle lightMarkerMesh_;
     std::vector<engine::TextureHandle> lightMarkerTextures_;
 
@@ -431,8 +494,18 @@ private:
     size_t firstLightMarker_ = 0;
 };
 
+
 int main(int /*argumentCount*/, char** /*arguments*/) {
-    HWND window = engine::makeWindow(ScreenWidth, ScreenHeight);
+    static engine::Engine* enginePtr;
+
+    engine::WindowResizedCallback* windowCallback = [](int newWidth, int newHeight){
+        if (enginePtr) {
+            enginePtr->ResizeSurface(newWidth, newHeight);
+        }
+    };
+
+    HWND window = engine::makeWindow(ScreenWidth, ScreenHeight, windowCallback);
+
 
     engine::EngineConfig config;
     config.applicationName = "ExampleGame";
@@ -441,6 +514,7 @@ int main(int /*argumentCount*/, char** /*arguments*/) {
     engine::Engine engine{config};
     engine.AddSubsystem<engine::RenderingSubsystem>();
     engine.AddSubsystem<ExampleGameLogic>(window);
+    enginePtr = &engine;
     const bool ran = engine.Run();
 
     ReleaseCapture();

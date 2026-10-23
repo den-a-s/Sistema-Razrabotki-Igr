@@ -48,9 +48,7 @@ struct CpuPayload {
 struct GpuPayload {
     MeshHandle mesh;
     TextureHandle texture;
-    ShaderHandle vertex;
-    ShaderHandle pixel;
-    ShaderHandle geometry;
+    ShaderHandle shader;
 };
 
 /// Everything the upload phase may need, resolved on the main thread before the call.

@@ -18,12 +18,10 @@ struct TextureAsset {
     TextureHandle texture;
 };
 
-/// One .hlsl file, compiled for the stages it is asked for. A stage handle is empty when
-/// the file was not loaded for that stage.
+/// One compiled shader variant and stage, owned by the RenderingResourceManager.
 struct ShaderAsset {
-    ShaderHandle vertex;
-    ShaderHandle pixel;
-    ShaderHandle geometry;
+    ShaderHandle shader;
+    ShaderType stage;
 };
 
 /// Which table each asset type lives in; used by the templated lookup helpers.

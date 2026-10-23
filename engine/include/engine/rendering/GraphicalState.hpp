@@ -19,8 +19,8 @@ enum class BlendState : uint8_t {
 
 enum class DepthState : uint8_t {
     Disabled,
-    ReadWrite, //.DepthFunc = D3D11_COMPARISON_LESS; //todo: think if we'll use Reverse-Z everywhere
-    ReadOnly, //.DepthFunc = D3D11_COMPARISON_GREATER;
+    ReadWrite, //.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL; (engine uses ReverseZ)
+    ReadOnly, //.DepthFunc = D3D11_COMPARISON_LESS;
 
     Count
 };

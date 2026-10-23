@@ -1,8 +1,7 @@
-#include "AssetPipeline.hpp"
-
 #include <utility>
 
 #include <engine/assets/AssetPathResolver.hpp>
+#include <engine/assets/AssetPipeline.hpp>
 
 namespace engine {
 
@@ -10,7 +9,9 @@ bool ShaderImporter::ReadCpu(const AssetDesc& desc, ID3D11Device* /*device*/, Cp
                             std::string& error) const {
     const auto path = AssetPathResolver::ResolveShader(desc);
 
-    auto compiled = ShaderContext::CompileCpu(path.native(), desc.shaderStage);
+    auto compiled = desc.shaderFromMemory
+        ? ShaderContext::CompileSource(desc.shaderSource, path, desc.shaderStage, desc.shaderOptions)
+        : ShaderContext::CompileCpu(path, desc.shaderStage, desc.shaderOptions);
     if (!compiled) {
         // CompileCpu already logged the compiler output with the file name.
         error = "HLSL compilation failed for " + desc.name;
@@ -36,17 +37,7 @@ bool ShaderImporter::UploadGpu(const UploadTransfer& transfer, const CpuPayload&
         return false;
     }
 
-    switch (payload.shader.type) {
-    case ShaderType::Vertex:
-        result.vertex = handle;
-        break;
-    case ShaderType::Pixel:
-        result.pixel = handle;
-        break;
-    case ShaderType::Geometry:
-        result.geometry = handle;
-        break;
-    }
+    result.shader = handle;
     return true;
 }
 

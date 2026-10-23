@@ -11,6 +11,8 @@
 
 namespace engine {
 
+inline constexpr uint32_t ShadowMapSize = 2048;
+
 using DirectX::SimpleMath::Vector2;
 using DirectX::SimpleMath::Vector3;
 using DirectX::SimpleMath::Vector4;
@@ -32,8 +34,6 @@ struct ViewBufferData {
 struct MaterialBufferData {
     Vector3 specularColor;
     float shininess;
-    uint32_t specialType;
-    Vector3 padding;
 };
 
 struct ObjectBufferData {
@@ -44,6 +44,7 @@ struct ObjectBufferData {
 struct CascadeBufferData {
     std::array<Matrix, 4> viewProjections{};
     std::array<float, 4> distances{};
+    std::array<float, 4> transitionStarts{};
 };
 
 struct LightBufferData {
@@ -81,9 +82,13 @@ struct ConstantBuffer {
     [[nodiscard]] BufferHandle GetHandle() const {
         return handle_;
     }
-
-    explicit ConstantBuffer(RenderingResourceManager& resourceManager) {
+    
+    void Initialize(RenderingResourceManager& resourceManager) {
         handle_ = resourceManager.CreateConstantBuffer<T>();
+    }
+    
+    void Destroy(RenderingResourceManager& resourceManager) {
+        resourceManager.DestroyBuffer(handle_);
     }
 
 private:
@@ -120,14 +125,18 @@ struct RenderingResources {
 
     TextureHandle shadowTexture;
     GBuffer gBuffer;
+    
+    TextureHandle defaultAlbedoTexture_{};
 
     //I am not yet sure should it be here or not
     CascadeInfo cascadeInfo;
 
-    ENGINE_API explicit RenderingResources(uint32_t aScreenWith, uint32_t aScreenHeight,
-                                           RenderingResourceManager& resourceManager);
+    ENGINE_API explicit RenderingResources(uint32_t aScreenWith, uint32_t aScreenHeight);
 
     ENGINE_API void BindCBuffers(RenderingContext& context);
+    
+    ENGINE_API void Initialize(RenderingResourceManager& resourceManager);
+    ENGINE_API void Destroy(RenderingResourceManager& resourceManager);
 };
 
 

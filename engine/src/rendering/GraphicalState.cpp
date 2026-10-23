@@ -122,7 +122,7 @@ void RenderStates::InitializeDepthStates(ID3D11Device* device) {
 
         desc.DepthEnable = TRUE;
         desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-        desc.DepthFunc = D3D11_COMPARISON_LESS;
+        desc.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL;
 
         desc.StencilEnable = FALSE;
 
@@ -135,7 +135,7 @@ void RenderStates::InitializeDepthStates(ID3D11Device* device) {
 
         desc.DepthEnable = TRUE;
         desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-        desc.DepthFunc = D3D11_COMPARISON_GREATER;
+        desc.DepthFunc = D3D11_COMPARISON_LESS;
 
         desc.StencilEnable = FALSE;
 
@@ -179,9 +179,10 @@ void RenderStates::InitializeRasterizerStates(ID3D11Device* device) {
 
         desc.FrontCounterClockwise = FALSE;
 
-        desc.DepthBias = 10000;
+        // Reverse-Z: push shadow-map depths away from the light (toward 0).
+        desc.DepthBias = -1;
         desc.DepthBiasClamp = 0.0f;
-        desc.SlopeScaledDepthBias = 2.0f;
+        desc.SlopeScaledDepthBias = -1.0f;
 
         desc.DepthClipEnable = TRUE;
         desc.ScissorEnable = FALSE;
@@ -323,17 +324,18 @@ void RenderStates::InitializeSamplerStates(ID3D11Device* device) {
         desc.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
         desc.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
 
-        desc.BorderColor[0] = 1.0f;
-        desc.BorderColor[1] = 1.0f;
-        desc.BorderColor[2] = 1.0f;
-        desc.BorderColor[3] = 1.0f;
+        // The reverse-Z far depth is 0, so samples outside the map should be lit.
+        desc.BorderColor[0] = 0.0f;
+        desc.BorderColor[1] = 0.0f;
+        desc.BorderColor[2] = 0.0f;
+        desc.BorderColor[3] = 0.0f;
         
         desc.MinLOD = 0.0f;
         desc.MaxLOD = D3D11_FLOAT32_MAX;
         desc.MipLODBias = 0.0f;
         desc.MaxAnisotropy = 1;
 
-        desc.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
+        desc.ComparisonFunc = D3D11_COMPARISON_GREATER_EQUAL;
         
         init(desc, SamplerState::ShadowComparison);
     }

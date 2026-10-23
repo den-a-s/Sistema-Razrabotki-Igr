@@ -2,6 +2,8 @@
 
 #include <engine/rendering/UglyUtils.hpp>
 
+#include <string>
+
 namespace engine {
 namespace {
 
@@ -24,10 +26,20 @@ void UpdateLight(RenderingContext& context, RenderingResources& resources,
 }
 
 void LightPass::Initialize(RenderingResourceManager& resourceManager, RenderingContext&, RenderingResources&) {
-    vertexShader_ = resourceManager.CompileShader(L"LightPass.hlsl", ShaderType::Vertex);
-    pixelShader_ = resourceManager.CompileShader(L"LightPass.hlsl", ShaderType::Pixel);
-    dirLightVertexShader_ = resourceManager.CompileShader(L"DirectionalLightVS.hlsl", ShaderType::Vertex);
+    vertexShader_ = resourceManager.CompileShader(L"engine/LightPass.hlsl", ShaderType::Vertex);
+    ShaderCompileOptions pixelOptions;
+    pixelOptions.defines = {{"PCF_RADIUS", "1"}, {"SHADOW_MAP_SIZE", std::to_string(ShadowMapSize)}};
+    pixelShader_ = resourceManager.CompileShader(L"engine/LightPass.hlsl", ShaderType::Pixel, pixelOptions);
+    dirLightVertexShader_ = resourceManager.CompileShader(L"engine/DirectionalLightVS.hlsl", ShaderType::Vertex);
     lightSphere_ = ugly_utils::FromRawMesh(resourceManager, ugly_utils::CreateSphere(1.0f));
+}
+
+void LightPass::Destroy(RenderingResourceManager& resourceManager, RenderingContext& context,
+    RenderingResources& resources) {
+    resourceManager.DestroyShader(vertexShader_);
+    resourceManager.DestroyShader(pixelShader_);
+    resourceManager.DestroyShader(dirLightVertexShader_);
+    resourceManager.DestroyMesh(lightSphere_);
 }
 
 void LightPass::Render(RenderWorld& world, RenderingContext& context, RenderingResources& resources) {
@@ -76,7 +88,10 @@ void LightPass::Render(RenderWorld& world, RenderingContext& context, RenderingR
             context.DrawMesh(bb);
         }
     }
-    // context.SetRenderTargets({gBuffer.resultTexture}, TextureHandle{});
+    // The directional light covers the entire screen; its shader reads scene depth
+    // directly and must not be clipped by the light-volume depth test.
+    context.SetRenderTargets({gBuffer.resultTexture}, TextureHandle{});
+    context.SetDepthState(DepthState::Disabled);
     context.SetRasterizerState(RasterizerState::CullNone);
     UpdateLight(context, resources, world.directionalLight);
     context.SetShader(dirLightVertexShader_);

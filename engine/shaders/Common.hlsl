@@ -1,3 +1,6 @@
+#ifndef COMMON_INCLUDE_H
+#define COMMON_INCLUDE_H
+
 #pragma pack_matrix(row_major)
 
 struct EngineFrameData {
@@ -38,10 +41,10 @@ cbuffer EngineObject : register(b3) {
     EngineObjectData Object;
 }
 
-
 struct ShadowCascadesData {
     float4x4 viewProjections[4];
     float4 distances;
+    float4 transitionStarts;
 };
 
 cbuffer EngineCascades : register(b4) {
@@ -54,3 +57,4 @@ SamplerState LinearWrapSampler : register(s2);
 SamplerState AnisotropicWrapSampler : register(s3);
 SamplerComparisonState ShadowComparisonSampler : register(s4);
 
+#endif

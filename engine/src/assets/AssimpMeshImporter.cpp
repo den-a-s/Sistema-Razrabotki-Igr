@@ -1,5 +1,3 @@
-#include "AssetPipeline.hpp"
-
 #include <algorithm>
 #include <format>
 #include <span>
@@ -11,6 +9,7 @@
 #include <assimp/scene.h>
 
 #include <engine/assets/AssetPathResolver.hpp>
+#include <engine/assets/AssetPipeline.hpp>
 
 namespace engine {
 namespace {

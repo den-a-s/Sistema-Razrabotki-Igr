@@ -8,13 +8,15 @@
 
 namespace engine {
 
+struct SurfaceChangedEvent;
+
 /// Bridges the existing RenderingSystem into the Engine kernel: it renders into
 /// Engine::GetSurface(), so the host keeps owning the window and its message pump.
-/// Surface size changes are not handled yet (no ResizeBuffers).
 class ENGINE_API RenderingSubsystem : public Subsystem {
 public:
     [[nodiscard]] std::string_view GetName() const override;
     [[nodiscard]] bool Initialize() override;
+    void Shutdown() override;
     void Render(const FrameContext& frame) override;
 
     [[nodiscard]] RenderingSystem& GetRendering() noexcept;
@@ -25,8 +27,11 @@ public:
     [[nodiscard]] const NativeSurface& GetSurface() const noexcept;
 
 private:
+    void OnSurfaceChanged(const SurfaceChangedEvent& event);
+
     RenderingSystem renderer_{};
     NativeSurface surface_{};
+    bool resizePending_ = false;
 };
 
 }  // namespace engine
