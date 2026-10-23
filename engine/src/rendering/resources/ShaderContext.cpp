@@ -15,6 +15,14 @@
 namespace engine {
 namespace {
 
+// Editors such as Visual Studio save UTF-8 with a BOM; FXC rejects it in memory sources
+// ("error X3000: Illegal character in shader file").
+void StripUtf8Bom(std::string& text) {
+    if (text.starts_with("\xEF\xBB\xBF")) {
+        text.erase(0, 3);
+    }
+}
+
 class ShaderIncludes final : public ID3DInclude {
 public:
     explicit ShaderIncludes(std::filesystem::path sourcePath) : sourcePath_(std::move(sourcePath)) {}
@@ -39,6 +47,7 @@ public:
             return E_FAIL;
         }
         std::string contents{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
+        StripUtf8Bom(contents);
         if (contents.size() > std::numeric_limits<UINT>::max()) {
             return E_FAIL;
         }
@@ -110,7 +119,8 @@ std::optional<CompiledShader> ShaderContext::CompileCpu(const std::filesystem::p
         spdlog::error("Missing shader file: {}", fileName.string());
         return std::nullopt;
     }
-    const std::string source{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
+    std::string source{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
+    StripUtf8Bom(source);
     return CompileSource(source, fileName, shaderType, options);
 }
 
