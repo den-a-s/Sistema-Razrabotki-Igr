@@ -4,11 +4,12 @@
 #include <QTimer>
 #include <QToolBar>
 #include <QTreeWidget>
-#include <QTreeWidgetItemIterator>
 
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 
 #include <engine/assets/AssetSystem.hpp>
 #include <engine/engine.hpp>
@@ -16,58 +17,97 @@
 
 #include <editor/editor_context.hpp>
 #include <editor/editor_module.hpp>
+#include <editor/selection.hpp>
 
 #include "inspector_panel.hpp"
 
 namespace {
 
 /// Lists the scene's entities as a tree, rebuilt whenever the scene's revision changes.
-/// The current item is the selection; each item carries its entity.
+/// Its selection mirrors the editor's Selection both ways; the current item is the primary.
 class HierarchyPanel : public QTreeWidget {
 public:
-    static entt::entity entityOf(const QTreeWidgetItem* item) {
-        return item != nullptr ? static_cast<entt::entity>(item->data(0, Qt::UserRole).toUInt()) : entt::null;
-    }
-
-    explicit HierarchyPanel(engine::Scene& scene) : scene_(scene) {
+    HierarchyPanel(engine::Scene& scene, editor::Selection& selection) : scene_(scene), selection_(selection) {
         setHeaderHidden(true);
+        setSelectionMode(QAbstractItemView::ExtendedSelection);
+        // A click changes the selection before the current item, so both push.
+        connect(this, &QTreeWidget::itemSelectionChanged, this, &HierarchyPanel::pushSelection);
+        connect(this, &QTreeWidget::currentItemChanged, this, &HierarchyPanel::pushSelection);
+        connect(&selection_, &editor::Selection::changed, this, &HierarchyPanel::showSelection);
         // Scene has no change signal, only a revision counter: poll it.
         auto* timer = new QTimer(this);
         connect(timer, &QTimer::timeout, this, &HierarchyPanel::refresh);
         timer->start(200);
-        refresh();
+        rebuild();
+    }
+
+private:
+    static entt::entity entityOf(const QTreeWidgetItem* item) {
+        return item != nullptr ? static_cast<entt::entity>(item->data(0, Qt::UserRole).toUInt()) : entt::null;
     }
 
     void refresh() {
-        if (scene_.GetRevision() == shown_revision_) {
-            return;
+        if (scene_.GetRevision() != shown_revision_) {
+            rebuild();
         }
+    }
+
+    void rebuild() {
         shown_revision_ = scene_.GetRevision();
-        // Rebuilding isn't a selection change: keep the selected entity selected, quietly.
-        const entt::entity selected = entityOf(currentItem());
-        QSignalBlocker blocker(this);
+        // Rebuilding isn't a selection change: the selection is restored, quietly.
+        const QSignalBlocker blocker(this);
         clear();
+        items_.clear();
         for (const entt::entity root : scene_.GetRootEntities()) {
             addTopLevelItem(makeItem(root));
         }
         expandAll();
-        if (QTreeWidgetItem* item = findItem(selected)) {
-            setCurrentItem(item);
-        } else if (selected != entt::null) {
-            blocker.unblock();
-            emit currentItemChanged(nullptr, nullptr);  // destroyed
+        showSelection();
+    }
+
+    /// Tree -> Selection.
+    void pushSelection() {
+        std::vector<entt::entity> entities;
+        QTreeWidgetItem* current = currentItem();
+        for (const QTreeWidgetItem* item : selectedItems()) {
+            if (item != current) {
+                entities.push_back(entityOf(item));
+            }
+        }
+        if (current != nullptr && current->isSelected()) {
+            entities.push_back(entityOf(current));
+        }
+        pushing_ = true;
+        selection_.setEntities(entities);
+        pushing_ = false;
+    }
+
+    /// Selection -> tree.
+    void showSelection() {
+        if (pushing_) {
+            return;  // came from the tree, which already shows it
+        }
+        if (scene_.GetRevision() != shown_revision_) {
+            rebuild();  // the selection may hold entities the tree doesn't have yet
+            return;
+        }
+        const QSignalBlocker blocker(this);
+        clearSelection();
+        for (const entt::entity entity : selection_.entities()) {
+            if (QTreeWidgetItem* item = findItem(entity)) {
+                item->setSelected(true);
+            }
+        }
+        if (QTreeWidgetItem* primary = findItem(selection_.primary())) {
+            setCurrentItem(primary, 0, QItemSelectionModel::NoUpdate);
+            scrollToItem(primary);
         }
     }
 
-    void select(const entt::entity entity) {
-        refresh();
-        setCurrentItem(findItem(entity));
-    }
-
-private:
     QTreeWidgetItem* makeItem(const entt::entity entity) {
         auto* item = new QTreeWidgetItem({QString::fromStdString(scene_.GetName(entity))});
         item->setData(0, Qt::UserRole, entt::to_integral(entity));
+        items_.emplace(entity, item);
         for (const entt::entity child : scene_.GetChildren(entity)) {
             item->addChild(makeItem(child));
         }
@@ -75,19 +115,17 @@ private:
     }
 
     QTreeWidgetItem* findItem(const entt::entity entity) const {
-        if (entity == entt::null) {
-            return nullptr;
-        }
-        for (QTreeWidgetItemIterator it(const_cast<HierarchyPanel*>(this)); *it != nullptr; ++it) {
-            if (entityOf(*it) == entity) {
-                return *it;
-            }
-        }
-        return nullptr;
+        const auto it = items_.find(entity);
+        return it != items_.end() ? it->second : nullptr;
     }
 
     engine::Scene& scene_;
+    editor::Selection& selection_;
+    /// Every item of the tree, by entity. Owned by the tree.
+    std::unordered_map<entt::entity, QTreeWidgetItem*> items_;
     std::uint64_t shown_revision_ = ~std::uint64_t{0};
+    /// Set while the tree's own selection is being pushed, so it isn't shown back.
+    bool pushing_ = false;
 };
 
 class SceneModule final : public editor::IEditorModule {
@@ -98,17 +136,15 @@ public:
 
     void startup(editor::EditorContext& context) override {
         context_ = &context;
-        hierarchy_ = new HierarchyPanel(context.scene());
-        context.addPanel(QStringLiteral("HierarchyPanel"), QObject::tr("Hierarchy"), hierarchy_, Qt::LeftDockWidgetArea);
+        auto* hierarchy = new HierarchyPanel(context.scene(), context.selection());
+        context.addPanel(QStringLiteral("HierarchyPanel"), QObject::tr("Hierarchy"), hierarchy, Qt::LeftDockWidgetArea);
 
-        auto* inspector = new InspectorPanel(context.scene());
+        auto* inspector = new InspectorPanel(context.scene(), context.selection());
         context.addPanel(QStringLiteral("InspectorPanel"), QObject::tr("Inspector"), inspector, Qt::RightDockWidgetArea);
-        QObject::connect(hierarchy_, &QTreeWidget::currentItemChanged, inspector,
-                         [inspector](QTreeWidgetItem* current) { inspector->setEntity(HierarchyPanel::entityOf(current)); });
 
         auto* add_cube = context.menu(QObject::tr("&Scene"))->addAction(QObject::tr("Add &Cube"));
         context.toolBar()->addAction(add_cube);
-        QObject::connect(add_cube, &QAction::triggered, hierarchy_, [this] { addCube(); });
+        QObject::connect(add_cube, &QAction::triggered, add_cube, [this] { addCube(); });
     }
 
 private:
@@ -122,11 +158,10 @@ private:
         // Asynchronous: the cube shows up once the mesh is loaded (immediately after the first one).
         scene.GetRegistry().emplace<engine::MeshRenderer>(
             cube, context_->engine().GetAssets().RequestMesh(engine::BuiltinAssets::CubeMesh));
-        hierarchy_->select(cube);
+        context_->selection().select(cube);
     }
 
     editor::EditorContext* context_ = nullptr;
-    HierarchyPanel* hierarchy_ = nullptr;  // owned by its dock
     int cube_count_ = 0;
 };
 

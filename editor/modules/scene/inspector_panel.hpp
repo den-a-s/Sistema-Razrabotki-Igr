@@ -15,17 +15,21 @@ namespace engine {
 class Scene;
 }
 
-/// Shows and edits the selected entity's name and local transform. Polls the scene,
-/// so changes made elsewhere (e.g. the editor camera flying) show up too.
+namespace editor {
+class Selection;
+}
+
+/// Shows and edits the primary selected entity's name and local transform. Polls the
+/// scene, so changes made elsewhere (e.g. the editor camera flying) show up too.
 class InspectorPanel : public QWidget {
 public:
-    explicit InspectorPanel(engine::Scene& scene, QWidget* parent = nullptr);
-
-    /// entt::null clears the panel.
-    void setEntity(entt::entity entity);
+    InspectorPanel(engine::Scene& scene, editor::Selection& selection, QWidget* parent = nullptr);
 
 private:
     using Vec3Boxes = std::array<QDoubleSpinBox*, 3>;
+
+    /// entt::null clears the panel.
+    void setEntity(entt::entity entity);
 
     Vec3Boxes makeVec3Row(double step, int decimals);
     /// Scene -> widgets.

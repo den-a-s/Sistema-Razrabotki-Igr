@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <editor/editor_core_export.hpp>
+#include <editor/selection.hpp>
 
 class QMainWindow;
 class QMenu;
@@ -25,8 +26,8 @@ class Scene;
 
 namespace editor {
 
-/// What the editor hands to its modules: the engine, the scene being edited and the
-/// places a module may add UI to. Owned by MainWindow; outlives every module and is
+/// What the editor hands to its modules: the engine, the scene being edited, the
+/// selection and the places a module may add UI to. Owned by MainWindow; outlives every module and is
 /// destroyed before the engine.
 class EDITOR_CORE_API EditorContext {
 public:
@@ -39,6 +40,8 @@ public:
 
     [[nodiscard]] engine::Engine& engine() noexcept;
     [[nodiscard]] engine::Scene& scene() noexcept;
+    /// What the user has selected in the scene. Panels follow and change it through here.
+    [[nodiscard]] Selection& selection() noexcept;
 
     /// Finds the menu-bar menu with this title (ignoring '&' mnemonics) or appends a new one.
     QMenu* menu(const QString& title);
@@ -65,6 +68,7 @@ private:
     ads::CDockManager& dock_manager_;
     QToolBar* tool_bar_ = nullptr;
     std::vector<Panel> panels_;
+    Selection selection_;
 };
 
 }  // namespace editor

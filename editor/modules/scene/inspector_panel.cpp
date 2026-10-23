@@ -15,6 +15,8 @@
 
 #include <engine/scene/Scene.hpp>
 
+#include <editor/selection.hpp>
+
 namespace {
 
 using DirectX::SimpleMath::Quaternion;
@@ -38,7 +40,8 @@ void showVec3(const std::array<QDoubleSpinBox*, 3>& boxes, const Vector3& value)
 
 }  // namespace
 
-InspectorPanel::InspectorPanel(engine::Scene& scene, QWidget* parent) : QWidget(parent), scene_(scene) {
+InspectorPanel::InspectorPanel(engine::Scene& scene, editor::Selection& selection, QWidget* parent)
+    : QWidget(parent), scene_(scene) {
     form_ = new QWidget(this);
     auto* form = new QFormLayout(form_);
     name_ = new QLineEdit(form_);
@@ -66,7 +69,13 @@ InspectorPanel::InspectorPanel(engine::Scene& scene, QWidget* parent) : QWidget(
     connect(timer, &QTimer::timeout, this, &InspectorPanel::refresh);
     timer->start(100);
 
-    setEntity(entt::null);
+    // Only on a new primary: re-showing the same entity would reset the rotation angles being edited.
+    connect(&selection, &editor::Selection::changed, this, [this, &selection] {
+        if (selection.primary() != entity_) {
+            setEntity(selection.primary());
+        }
+    });
+    setEntity(selection.primary());
 }
 
 void InspectorPanel::setEntity(const entt::entity entity) {

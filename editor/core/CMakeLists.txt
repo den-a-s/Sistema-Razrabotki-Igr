@@ -1,12 +1,15 @@
 # ---------------------------------------------------------------------------
 # editor_core -- shared library between the editor executable and its modules:
-# EditorContext (what a module may touch) and the IEditorModule interface.
+# EditorContext (what a module may touch), the shared Selection and the
+# IEditorModule interface.
 # ---------------------------------------------------------------------------
 
 add_library(editor_core SHARED
     src/editor_context.cpp
+    src/selection.cpp
     include/editor/editor_context.hpp
     include/editor/editor_module.hpp
+    include/editor/selection.hpp
 )
 
 include(GenerateExportHeader)
