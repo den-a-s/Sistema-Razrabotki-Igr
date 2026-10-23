@@ -17,11 +17,17 @@ find_package(spdlog CONFIG REQUIRED)
 # Turns on AUTOMOC / AUTOUIC / AUTORCC and a few sane defaults. Qt 6.3+.
 qt_standard_project_setup()
 
+add_subdirectory(core)
+
 qt_add_executable(editor
+    src/editor_camera.cpp
     src/main.cpp
     src/main_window.cpp
+    src/module_loader.cpp
     src/viewport_widget.cpp
+    include/editor/editor_camera.hpp
     include/editor/main_window.hpp
+    include/editor/module_loader.hpp
     include/editor/viewport_widget.hpp
 )
 
@@ -31,6 +37,8 @@ target_include_directories(editor PRIVATE
 
 
 target_link_libraries(editor PRIVATE
+    editor_core
+    ads::qtadvanceddocking-qt6
     Engine::Engine     # brings engine's include dirs along as usage requirements
     # Must be the same shared spdlog the engine uses, so both log into one
     # default logger and the editor's Log dock sees engine messages.
@@ -61,6 +69,53 @@ if(WIN32)
         VERBATIM
     )
 endif()
+
+# --- Engine runtime files -------------------------------------------------
+# The renderer compiles its shaders from <exe dir>/engine/shaders at startup;
+# engine/primitives holds the built-in meshes and textures (engine::BuiltinAssets).
+add_custom_target(EditorAssets ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:editor>/engine"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${PROJECT_SOURCE_DIR}/engine/shaders"
+        "$<TARGET_FILE_DIR:editor>/engine/shaders"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${PROJECT_SOURCE_DIR}/engine/primitives"
+        "$<TARGET_FILE_DIR:editor>/engine/primitives"
+    COMMENT "Copying editor runtime assets"
+    VERBATIM
+)
+add_dependencies(editor EditorAssets)
+set_target_properties(EditorAssets PROPERTIES FOLDER "tools")
+
+# --- Editor modules --------------------------------------------------------
+# Each module is a DLL in <exe dir>/editor_modules, loaded once at startup
+# (see include/editor/editor_module.hpp). Building the editor builds them all.
+get_property(SRI_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(SRI_MULTI_CONFIG)
+    # A generator expression stops CMake from appending the config directory itself.
+    set(SRI_EDITOR_MODULE_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/editor_modules")
+else()
+    set(SRI_EDITOR_MODULE_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/editor_modules")
+endif()
+
+function(sri_add_editor_module name)
+    # The loader only picks up editor_module_*.dll: vcpkg puts other DLLs next to the modules.
+    if(NOT name MATCHES "^editor_module_")
+        message(FATAL_ERROR "Editor module '${name}' must be named editor_module_<something>")
+    endif()
+    add_library(${name} MODULE ${ARGN})
+    target_link_libraries(${name} PRIVATE editor_core)
+    set_target_properties(${name} PROPERTIES
+        AUTOMOC ON
+        LIBRARY_OUTPUT_DIRECTORY "${SRI_EDITOR_MODULE_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY "${SRI_EDITOR_MODULE_DIR}"
+        FOLDER "tools/editor_modules"
+    )
+    set_project_warnings(${name})
+    add_dependencies(editor ${name})
+endfunction()
+
+add_subdirectory(modules/scene)
 
 # --- Install / deploy ------------------------------------------------------
 
